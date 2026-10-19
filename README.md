@@ -172,7 +172,7 @@ reported too.
 ```bash
 npm run test          # vitest: transforms, footprints, placement, routing, validation,
                       # store/undo, exporters, importers, local persistence,
-                      # full-pipeline integration (184 tests)
+                      # full-pipeline integration (185 tests)
 npm run test:watch    # watch mode
 npm run test:e2e      # playwright: full browser flows incl. import, routing, exports
                       # and autosave/restore after a refresh (19 specs)

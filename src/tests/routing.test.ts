@@ -178,6 +178,25 @@ describe('A* pathfinding', () => {
 });
 
 describe('Net routing', () => {
+  it('keeps minimum-jumper routes short instead of taking a large low-bend detour', () => {
+    const board = createEmptyBoard(config);
+    const routingConfig = { ...DEFAULT_ROUTING_CONFIG, preference: 'minimum-jumpers' as const };
+    const context = createRoutingContext(board, [], [], [], new Set(), routingConfig);
+    // Two staggered walls force a short zig-zag path; going around the outer
+    // edge uses fewer bends but adds ten holes. Length must win that tradeoff.
+    for (let row = 1; row < 14; row++) {
+      if (row !== 6) context.graph.nodes.get(`${row},5`)!.componentId = 'wall-a';
+      if (row !== 8) context.graph.nodes.get(`${row},9`)!.componentId = 'wall-b';
+    }
+
+    const path = findPath(context, 'n1', { row: 7, col: 1 }, [{ row: 7, col: 13 }]);
+    expect(path).not.toBeNull();
+    expect(path).toHaveLength(16);
+    const pathPads = [path![0].from, ...path!.map(segment => segment.to)]
+      .map(coord => `${coord.row},${coord.col}`);
+    expect(new Set(pathPads).size).toBe(pathPads.length);
+  });
+
   it('routes a two-pin net', () => {
     const board = createEmptyBoard(config);
     const r1 = placeComponent('r1', 'R1', { row: 5, col: 3 }, 0, RESISTOR_AXIAL, { p1: 'net1', p2: 'net2' });

@@ -231,7 +231,8 @@ export function findPath(
   context: RoutingContext,
   netId: string,
   startCoord: Coordinate,
-  targetCoords: Coordinate[]
+  targetCoords: Coordinate[],
+  freePads: ReadonlySet<string> = new Set()
 ): RouteSegment[] | null {
   const { graph, config } = context;
   
@@ -316,24 +317,27 @@ export function findPath(
       const startsJumper = edgeType === 'wire' && (
         currentState.previousType !== 'wire' || currentState.previousLayer !== edge.layer
       );
+      // Wire distance must remain a real cost under every preference. The old
+      // 0.001 edge cost made one bend more expensive than hundreds of holes,
+      // so A* drew huge loops just to avoid turns.
       const preferenceBase = config.preference === 'minimum-jumpers'
-        ? (startsJumper ? 100 : edgeType === 'wire' ? 0.001 : 0.001)
+        ? (startsJumper ? 10_000 : edge.cost)
         : edge.cost * config.lengthWeight;
       let cost = preferenceBase;
       
       // Bend penalty: if direction changes from parent edge
       if (currentState.direction && currentState.direction !== direction) {
-        cost += config.preference === 'clean' ? Math.max(config.bendPenalty, 8) : config.bendPenalty;
+        const bendWeight = config.preference === 'clean'
+          ? Math.min(config.bendPenalty, 1.5)
+          : config.preference === 'balanced'
+            ? Math.min(config.bendPenalty, 0.5)
+            : Math.min(config.bendPenalty, 0.2);
+        cost += bendWeight;
       }
       
       // Congestion penalty
-      const congestionCount = context.congestion.get(edge.to) || 0;
+      const congestionCount = freePads.has(edge.to) ? 0 : context.congestion.get(edge.to) || 0;
       cost += congestionCount * config.congestionPenalty;
-      
-      // Unless this is a strip connection (strips don't consume wire)
-      if (edge.type !== 'strip') {
-        cost += config.crossingPenalty * 0.01; // Minimal crossing cost here; handled later
-      }
       
       const tentativeG = currentState.g + cost;
       const existingG = gScores.get(nextStateKey);
@@ -383,7 +387,32 @@ export function findPath(
     state = state.parent;
   }
   
-  return segments;
+  return removePathCycles(segments);
+}
+
+function removePathCycles(segments: RouteSegment[]): RouteSegment[] {
+  if (segments.length < 2) return segments;
+  const path = [segments[0].from];
+  const result: RouteSegment[] = [];
+  const visited = new Map([[`${path[0].row},${path[0].col}`, 0]]);
+
+  for (const segment of segments) {
+    const key = `${segment.to.row},${segment.to.col}`;
+    const repeatedAt = visited.get(key);
+    if (repeatedAt !== undefined) {
+      result.splice(repeatedAt);
+      for (let i = path.length - 1; i > repeatedAt; i--) {
+        visited.delete(`${path[i].row},${path[i].col}`);
+      }
+      path.splice(repeatedAt + 1);
+      continue;
+    }
+    result.push(segment);
+    path.push(segment.to);
+    visited.set(key, path.length - 1);
+  }
+
+  return result;
 }
 
 function routingHeuristic(coord: Coordinate, targets: Coordinate[], config: RoutingConfig): number {
@@ -463,14 +492,14 @@ export function routeNet(context: RoutingContext, net: Net): Route | null {
       }
       
       for (const treeCoord of treeCoords) {
-        const segments = findPath(context, net.id, treeCoord, [target]);
+        const segments = findPath(context, net.id, treeCoord, [target], tree);
         if (segments) {
           const wireCount = segments.filter(segment => segment.type === 'wire').length;
           const wireLength = segments.filter(s => s.type === 'wire').reduce((sum, segment) =>
             sum + Math.abs(segment.to.row - segment.from.row) + Math.abs(segment.to.col - segment.from.col), 0);
           const cost = context.config.preference === 'minimum-jumpers'
-            ? countJumperRuns(segments) * 100 + wireLength * 0.001 + segments.length * 0.00001
-            : segments.length + wireCount * 0.5 + (context.config.preference === 'clean' ? countBends(segments) * 8 : 0);
+            ? countJumperRuns(segments) * 10_000 + wireLength + segments.length * 0.01
+            : segments.length + wireCount * 0.5 + (context.config.preference === 'clean' ? countBends(segments) * 1.5 : 0);
           
           // Also check if strip connectivity handles this for free
           if (cost < (best?.cost ?? Infinity) || !best) {
