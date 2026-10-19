@@ -244,7 +244,7 @@ No paid services; runs entirely client-side.
 
 ## License
 
-**MIT** © 2026 [Takshiv](https://github.com/codertakshiv) — free to use, modify, share and build
+**MIT** © 2026 [Takshiv Kashyap](https://github.com/codertakshiv) — free to use, modify, share and build
 on, commercially or not, **as long as the copyright notice and license text stay with it**
 (credit: *ZeroPCB Studio by codertakshiv*). See [LICENSE](LICENSE).
 

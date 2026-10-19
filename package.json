@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Turn a circuit into a validated, hole-by-hole soldering plan for perfboard / stripboard - free and fully client-side.",
   "license": "MIT",
-  "author": "Takshiv (https://github.com/codertakshiv)",
+  "author": "Takshiv Kashyap (https://github.com/codertakshiv)",
   "homepage": "https://github.com/codertakshiv/ZeroPCB-Studio#readme",
   "repository": {
     "type": "git",
