@@ -42,7 +42,7 @@ modify and share — keep the credit, see [License](#license)).
 | **Views** | Component side, solder side (true left-right mirror), and side-by-side. Wheel zoom anchored at the cursor, drag to pan, fullscreen schematic editing, and a compact in-canvas help button. Rulers with spreadsheet-style labels (`A1`…`Z30`, multi-letter rows); the pad grid can be hidden for a cleaner look at tracks and components (view only — exports always keep the holes). |
 | **Assembly guide** | Dynamically generated steps from the actual layout — place/solder steps per component with real pad coordinates, jumper cutting list, track-cut steps, verification steps, progress tracking. |
 | **Exports** | Project JSON (round-trip safe), SVG top/solder, PNG top/solder, printable PDF guide + checklist (via browser print), BOM / netlist / pad list / jumper list / track-cut list CSVs. |
-| **Storage** | Autosaves the whole project to this browser's IndexedDB on every change (short debounce) and restores it after a refresh or a new visit — no account, no cloud, no backend. A live indicator shows *Saving… / Saved HH:MM / Save failed*. Manual Save + Load buttons and Project JSON export/import stay available as backups. |
+| **Storage** | Autosaves the whole project to this browser's IndexedDB on every change (short debounce) and restores it after a refresh or a new visit — no account, no cloud, no backend. A live indicator shows *Saving… / Saved HH:MM / Save failed*. Named local projects plus Project JSON export/import are available. |
 | **Safety** | Components can never silently overlap: placement reports exactly what was placed and why anything failed. Failed placements show errors instead of pretending success. |
 
 ## 🚀 Quick start
@@ -172,10 +172,10 @@ reported too.
 ```bash
 npm run test          # vitest: transforms, footprints, placement, routing, validation,
                       # store/undo, exporters, importers, local persistence,
-                      # full-pipeline integration (174 tests)
+                      # full-pipeline integration (182 tests)
 npm run test:watch    # watch mode
 npm run test:e2e      # playwright: full browser flows incl. import, routing, exports
-                      # and autosave/restore after a refresh (17 specs)
+                      # and autosave/restore after a refresh (19 specs)
 npm run lint          # oxlint
 ```
 

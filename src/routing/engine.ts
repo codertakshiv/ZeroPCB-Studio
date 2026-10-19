@@ -24,7 +24,10 @@ import {
   RoutingStats,
   Route,
   RouteSegment,
+  RouteLayer,
 } from './types';
+import { measureJumperRuns } from './metrics';
+import { countJumperRuns } from './metrics';
 
 export function createRoutingGraph(
   board: BoardState,
@@ -98,7 +101,7 @@ export function createRoutingGraph(
     for (const [key, node] of nodes) {
       if (node.pad.isMountingHole) continue;
       
-      const connectedPads = node.pad.customConnectedPads || [];
+      const connectedPads = config.allowStripRouting ? node.pad.customConnectedPads || [] : [];
       const nodeEdges = edges.get(key) || [];
       
       for (const connected of connectedPads) {
@@ -119,6 +122,35 @@ export function createRoutingGraph(
       }
       
       edges.set(key, nodeEdges);
+    }
+
+    // Copper is shared by every pad in one uncut strip. Label those pads from
+    // their component pins so a different net cannot route along that strip.
+    const stripQueue = Array.from(nodes.values()).filter(node => node.netId && !node.pad.isMountingHole && !node.pad.isTrackCut);
+    const visitedStripNodes = new Set<string>();
+    for (const root of stripQueue) {
+      const rootKey = `${root.coordinate.row},${root.coordinate.col}`;
+      if (visitedStripNodes.has(rootKey)) continue;
+      const queue: RoutingNode[] = [root];
+      const group: RoutingNode[] = [];
+      const groupNets = new Set<string>();
+      visitedStripNodes.add(rootKey);
+      while (queue.length) {
+        const current = queue.shift()!;
+        group.push(current);
+        if (current.netId) groupNets.add(current.netId);
+        for (const connected of current.pad.customConnectedPads || []) {
+          const connectedKey = `${connected.row},${connected.col}`;
+          const neighbor = nodes.get(connectedKey);
+          if (!neighbor || neighbor.pad.isMountingHole || neighbor.pad.isTrackCut || visitedStripNodes.has(connectedKey)) continue;
+          visitedStripNodes.add(connectedKey);
+          queue.push(neighbor);
+        }
+      }
+      if (groupNets.size === 1) {
+        const stripNet = [...groupNets][0];
+        for (const node of group) if (!node.netId) node.netId = stripNet;
+      }
     }
   }
   
@@ -168,6 +200,7 @@ export function createRoutingContext(
       const key = `${segment.to.row},${segment.to.col}`;
       congestion.set(key, (congestion.get(key) || 0) + 1);
     }
+    reserveRoutePads(graph, route);
   }
   
   return {
@@ -183,7 +216,11 @@ export function createRoutingContext(
 }
 
 interface AStarState {
+  stateKey: string;
   key: string;
+  direction: string | null;
+  previousType: 'wire' | 'strip' | null;
+  previousLayer: RouteLayer | null;
   g: number;
   f: number;
   parent: AStarState | null;
@@ -209,46 +246,57 @@ export function findPath(
   const gScores = new Map<string, number>();
   
   const startState: AStarState = {
+    stateKey: `${startKey}|start`,
     key: startKey,
+    direction: null,
+    previousType: null,
+    previousLayer: null,
     g: 0,
     f: routingHeuristic(startCoord, targetCoords, config),
     parent: null,
     edge: null,
   };
   
-  openMap.set(startKey, startState);
-  gScores.set(startKey, 0);
+  openMap.set(startState.stateKey, startState);
+  gScores.set(startState.stateKey, 0);
   
   let foundState: AStarState | null = null;
   let searched = 0;
-  const maxSearch = 20000;
+  // The search state includes incoming direction, layer, and edge type, so its
+  // size can be several times larger than the physical board graph.
+  const maxSearch = Math.max(20_000, graph.nodes.size * 24);
   
   while (openMap.size > 0 && searched < maxSearch) {
     searched++;
     
     // Find node with lowest f score
-    let currentKey = '';
+    let currentStateKey = '';
     let lowestF = Infinity;
     for (const [key, state] of openMap) {
       if (state.f < lowestF) {
         lowestF = state.f;
-        currentKey = key;
+        currentStateKey = key;
       }
     }
     
-    const currentState = openMap.get(currentKey)!;
-    openMap.delete(currentKey);
-    closedSet.add(currentKey);
+    const currentState = openMap.get(currentStateKey)!;
+    openMap.delete(currentStateKey);
+    closedSet.add(currentStateKey);
     
-    if (targetKeys.has(currentKey)) {
+    if (targetKeys.has(currentState.key)) {
       foundState = currentState;
       break;
     }
     
-    const edges = graph.edges.get(currentKey) || [];
+    const edges = graph.edges.get(currentState.key) || [];
     
     for (const edge of edges) {
-      if (closedSet.has(edge.to)) continue;
+      const fromCoord = currentState.key.split(',').map(Number);
+      const toCoord = edge.to.split(',').map(Number);
+      const direction = `${toCoord[0] - fromCoord[0]},${toCoord[1] - fromCoord[1]}`;
+      const edgeType = edge.type === 'strip' ? 'strip' : 'wire';
+      const nextStateKey = `${edge.to}|${direction}|${edgeType}|${edge.layer}`;
+      if (closedSet.has(nextStateKey)) continue;
       
       const neighborNode = graph.nodes.get(edge.to);
       if (!neighborNode) continue;
@@ -257,16 +305,20 @@ export function findPath(
       // not even as the destination — that would silently short two nets.
       const neighborNet = neighborNode.netId;
       if (neighborNet && neighborNet !== netId) continue;
+      // Never route through a component lead that is not assigned to this net.
+      if (neighborNode.componentId && neighborNet !== netId) continue;
       
       // Calculate cost
+      const startsJumper = edgeType === 'wire' && (
+        currentState.previousType !== 'wire' || currentState.previousLayer !== edge.layer
+      );
       const preferenceBase = config.preference === 'minimum-jumpers'
-        ? (edge.type === 'strip' ? 0.001 : 100)
+        ? (startsJumper ? 100 : edgeType === 'wire' ? 0.001 : 0.001)
         : edge.cost * config.lengthWeight;
       let cost = preferenceBase;
       
       // Bend penalty: if direction changes from parent edge
-      const parentEdge = currentState.edge;
-      if (parentEdge && isDirectionChange(parentEdge, edge)) {
+      if (currentState.direction && currentState.direction !== direction) {
         cost += config.preference === 'clean' ? Math.max(config.bendPenalty, 8) : config.bendPenalty;
       }
       
@@ -280,23 +332,27 @@ export function findPath(
       }
       
       const tentativeG = currentState.g + cost;
-      const existingG = gScores.get(edge.to);
+      const existingG = gScores.get(nextStateKey);
       
       if (existingG === undefined || tentativeG < existingG) {
-        gScores.set(edge.to, tentativeG);
+        gScores.set(nextStateKey, tentativeG);
         
         const neighborCoord = { row: neighborNode.coordinate.row, col: neighborNode.coordinate.col };
         const h = routingHeuristic(neighborCoord, targetCoords, config);
         
         const newState: AStarState = {
+          stateKey: nextStateKey,
           key: edge.to,
+          direction,
+          previousType: edgeType,
+          previousLayer: edge.layer,
           g: tentativeG,
           f: tentativeG + h,
           parent: currentState,
           edge,
         };
         
-        openMap.set(edge.to, newState);
+        openMap.set(nextStateKey, newState);
       }
     }
   }
@@ -331,19 +387,6 @@ function routingHeuristic(coord: Coordinate, targets: Coordinate[], config: Rout
   // Strip edges cost less than a jumper edge, so scale the Manhattan bound by
   // the cheapest possible edge to keep A*'s heuristic admissible.
   return heuristic(coord, targets) * 0.4 * config.lengthWeight;
-}
-
-function isDirectionChange(prev: RoutingEdge, next: RoutingEdge): boolean {
-  const prevFrom = prev.from.split(',').map(Number);
-  const prevTo = prev.to.split(',').map(Number);
-  const nextTo = next.to.split(',').map(Number);
-  
-  const prevDr = prevTo[0] - prevFrom[0];
-  const prevDc = prevTo[1] - prevFrom[1];
-  const nextDr = nextTo[0] - prevTo[0];
-  const nextDc = nextTo[1] - prevTo[1];
-  
-  return prevDr !== nextDr || prevDc !== nextDc;
 }
 
 function heuristic(coord: Coordinate, targets: Coordinate[]): number {
@@ -415,9 +458,11 @@ export function routeNet(context: RoutingContext, net: Net): Route | null {
       for (const treeCoord of treeCoords) {
         const segments = findPath(context, net.id, treeCoord, [target]);
         if (segments) {
-          const wireCount = segments.filter(s => s.type === 'wire').length;
+          const wireCount = segments.filter(segment => segment.type === 'wire').length;
+          const wireLength = segments.filter(s => s.type === 'wire').reduce((sum, segment) =>
+            sum + Math.abs(segment.to.row - segment.from.row) + Math.abs(segment.to.col - segment.from.col), 0);
           const cost = context.config.preference === 'minimum-jumpers'
-            ? wireCount * 100 + segments.length * 0.001
+            ? countJumperRuns(segments) * 100 + wireLength * 0.001 + segments.length * 0.00001
             : segments.length + wireCount * 0.5 + (context.config.preference === 'clean' ? countBends(segments) * 8 : 0);
           
           // Also check if strip connectivity handles this for free
@@ -497,7 +542,7 @@ function areAllPinsConnectedViaStrips(
   netId: string,
   pinCoords: Coordinate[]
 ): boolean {
-  if (context.board.config.type !== 'stripboard') return false;
+  if (context.board.config.type !== 'stripboard' || !context.config.allowStripRouting) return false;
   
   // BFS through strip connections only
   const visited = new Set<string>();
@@ -575,6 +620,16 @@ export function routeAllNets(context: RoutingContext): RoutingResult {
     
     // Skip single-pin nets
     if (net.pins.length < 2) continue;
+
+    if (hasStripboardNetConflict(context, net)) {
+      unroutedNets.push(net.id);
+      errors.push({
+        code: 'STRIPBOARD_NET_CONFLICT',
+        message: `Net "${net.name}" shares uncut stripboard copper with another net. Add a track cut before routing.`,
+        netId: net.id,
+      });
+      continue;
+    }
     
     const route = routeNet(context, net);
     
@@ -586,19 +641,18 @@ export function routeAllNets(context: RoutingContext): RoutingResult {
         netId: net.id,
       });
     } else {
+      reserveRoutePads(context.graph, route);
       routes.push(route);
     }
   }
   
+  const jumperMetrics = measureJumperRuns(routes);
   const stats: RoutingStats = {
     totalRoutes: routes.length,
     totalWireLength: routes.reduce((sum, r) => sum + r.length, 0),
     totalBends: routes.reduce((sum, r) => sum + r.bendCount, 0),
-    // The routing graph models each adjacent-pad wire edge as one jumper link.
-    jumperCount: routes.reduce((sum, route) => sum + route.segments.filter(segment => segment.type === 'wire').length, 0),
-    jumperLength: routes.reduce((sum, route) => sum + route.segments
-      .filter(segment => segment.type === 'wire')
-      .reduce((length, segment) => length + Math.abs(segment.from.row - segment.to.row) + Math.abs(segment.from.col - segment.to.col), 0), 0),
+    jumperCount: jumperMetrics.count,
+    jumperLength: jumperMetrics.lengthHoles,
     totalCrossings: countCrossings(routes),
     routedNets: routes.length,
     unroutedNets: unroutedNets.length,
@@ -606,6 +660,54 @@ export function routeAllNets(context: RoutingContext): RoutingResult {
   };
   
   return { routes, unroutedNets, errors, stats };
+}
+
+function hasStripboardNetConflict(context: RoutingContext, net: Net): boolean {
+  if (context.board.config.type !== 'stripboard') return false;
+  const allPins = new Map<string, string>();
+  for (const component of context.components) {
+    for (const [pinId, netId] of component.nets) {
+      const coord = component.pinPositions.get(pinId);
+      if (coord && netId) allPins.set(`${coord.row},${coord.col}`, netId);
+    }
+  }
+  for (const pin of net.pins) {
+    const component = context.components.find(candidate => candidate.id === pin.componentId);
+    const start = component?.pinPositions.get(pin.pinId);
+    if (!start) continue;
+    const queue = [start];
+    const visited = new Set([`${start.row},${start.col}`]);
+    while (queue.length) {
+      const current = queue.shift()!;
+      const key = `${current.row},${current.col}`;
+      if (allPins.has(key) && allPins.get(key) !== net.id) return true;
+      const pad = context.board.pads.get(key);
+      if (!pad || pad.isMountingHole || pad.isTrackCut) continue;
+      for (const next of pad.customConnectedPads || []) {
+        const nextKey = `${next.row},${next.col}`;
+        const nextPad = context.board.pads.get(nextKey);
+        if (!nextPad || nextPad.isMountingHole || nextPad.isTrackCut || visited.has(nextKey)) continue;
+        visited.add(nextKey);
+        queue.push(next);
+      }
+    }
+  }
+  return false;
+}
+
+/** Reserve pads touched by a wire so a later net cannot short through them. */
+function reserveRoutePads(graph: RoutingGraph, route: Route): void {
+  for (const segment of route.segments) {
+    if (segment.type !== 'wire') continue;
+    const rowStep = Math.sign(segment.to.row - segment.from.row);
+    const colStep = Math.sign(segment.to.col - segment.from.col);
+    const steps = Math.max(Math.abs(segment.to.row - segment.from.row), Math.abs(segment.to.col - segment.from.col));
+    for (let i = 0; i <= steps; i++) {
+      const key = `${segment.from.row + rowStep * i},${segment.from.col + colStep * i}`;
+      const node = graph.nodes.get(key);
+      if (node && !node.netId) node.netId = route.netId;
+    }
+  }
 }
 
 function countCrossings(routes: Route[]): number {

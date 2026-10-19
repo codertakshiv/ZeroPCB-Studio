@@ -411,6 +411,30 @@ describe('Project save/load (JSON round-trip)', () => {
     expect(restored!.routes[0].segments.length).toBe(8);
     expect(restored!.metadata.name).toBe('Round Trip');
   });
+
+  it('migrates version 1.0 projects without changing saved placement or locks', () => {
+    const board = createEmptyBoard(config);
+    const circuit = {
+      id: 'legacy', name: 'Legacy project', components: [], nets, createdAt: 0, updatedAt: 0,
+    };
+    const placed = { ...r1, locked: true, position: { row: 4, col: 6 } };
+    const raw = JSON.parse(serializeProject(createProjectFile(board, circuit as never, [placed], [], nets))) as Record<string, unknown>;
+    raw.version = '1.0';
+    delete raw.routingPreference;
+    delete raw.schematicPositions;
+
+    const restored = deserializeProject(JSON.stringify(raw));
+    expect(restored?.version).toBe('1.1');
+    expect(restored?.routingPreference).toBe('minimum-jumpers');
+    expect(restored?.components[0].position).toEqual({ row: 4, col: 6 });
+    expect(restored?.components[0].locked).toBe(true);
+  });
+
+  it('rejects project files from a newer unsupported format', () => {
+    const raw = JSON.parse(serializeProject(createProjectFile(createEmptyBoard(config), { id: 'c', name: 'C', components: [], nets, createdAt: 0, updatedAt: 0 } as never, [], [], nets))) as Record<string, unknown>;
+    raw.version = '2.0';
+    expect(deserializeProject(JSON.stringify(raw))).toBeNull();
+  });
   
   it('rejects malformed project files', () => {
     expect(deserializeProject('not json')).toBeNull();

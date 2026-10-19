@@ -42,6 +42,20 @@ describe('Store: component management', () => {
     const net = after.circuit.nets.find(n => n.id === netId);
     expect(net?.pins.length || 0).toBe(0);
   });
+
+  it('duplicates a component with its net connections and a unique reference', () => {
+    const store = useAppStore.getState();
+    const originalId = store.addComponentToCircuit('resistor-axial', 'R1', '10k');
+    const netId = useAppStore.getState().addNet('SIGNAL');
+    useAppStore.getState().connectPinToNet(originalId, 'p1', netId);
+    const [duplicateId] = useAppStore.getState().duplicateComponents([originalId]);
+    const after = useAppStore.getState();
+    expect(after.circuit.components.map(component => component.reference)).toEqual(['R1', 'R2']);
+    expect(after.circuit.components.find(component => component.id === duplicateId)?.pins.get('p1')).toBe(netId);
+    expect(after.circuit.nets.find(net => net.id === netId)?.pins.map(pin => pin.componentId)).toEqual([originalId, duplicateId]);
+    expect(after.placedComponents).toHaveLength(0);
+    expect(after.selectedComponentIds.has(duplicateId)).toBe(true);
+  });
   
   it('connects and disconnects pins to nets', () => {
     const store = useAppStore.getState();

@@ -112,7 +112,8 @@ ${options.includeCoverPage ? `
     <span><span class="swatch" style="background:#dc2626"></span> Track cut</span>
   </div>
   <div class="note" style="max-width: 120mm; margin: 10mm auto;">
-    This guide was generated from a validated board layout. Follow each step in order.
+    This guide reflects the current board layout. Review the app's routing and validation
+    results before soldering; resolve any unrouted connections or board warnings first.
     Tick each checkbox as you complete it. Coordinates use row letters (A, B, C…) and
     column numbers (1, 2, 3…), referring to holes as seen from the COMPONENT side.
   </div>

@@ -21,6 +21,7 @@ const SCHEMATIC_CANVAS_PRESETS = [
 export function Workspace() {
   const board = useAppStore(s => s.board);
   const components = useAppStore(s => s.placedComponents);
+  const placementProposal = useAppStore(s => s.placementProposal);
   const routes = useAppStore(s => s.routes);
   const nets = useAppStore(s => s.circuit.nets);
   const activeSide = useAppStore(s => s.activeSide);
@@ -146,11 +147,21 @@ export function Workspace() {
     max: 4,
     getPan: () => panOffset,
   });
+
+  const proposalComponents = placementProposal?.placement.placedComponents.filter(candidate => {
+    const current = components.find(component => component.id === candidate.id);
+    return current && (
+      current.position.row !== candidate.position.row ||
+      current.position.col !== candidate.position.col ||
+      current.orientation !== candidate.orientation
+    );
+  }) ?? [];
   
   const componentSVG = (
     <BoardCanvas
       board={board}
       components={components}
+      proposalComponents={proposalComponents}
       routes={routes}
       nets={nets}
       side="component"

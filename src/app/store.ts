@@ -33,6 +33,7 @@ import {
   OptimizationIntensity,
   DEFAULT_PLACEMENT_CONFIG,
   PlacementResult,
+  PlacementProposal,
 } from '../placement/types';
 import { 
   RoutingConfig, 
@@ -144,7 +145,7 @@ export interface AppState {
   placedComponents: PlacedComponent[];
   placementConfig: PlacementConfig;
   placementResult: PlacementResult | null;
-  placementProposal: PlacementResult | null;
+  placementProposal: PlacementProposal | null;
   
   // Routing
   routes: Route[];
@@ -185,6 +186,7 @@ export interface AppState {
   focusMode: boolean;
   
   // Project
+  activeProjectId: string;
   projectMetadata: ProjectMetadata;
   lastSaved: number | null;
   isDirty: boolean;
@@ -204,6 +206,7 @@ export interface AppState {
   toggleTrackCut: (coord: Coordinate) => void;
   
   addComponentToCircuit: (footprintId: string, reference: string, value?: string) => string;
+  duplicateComponents: (componentIds: string[]) => string[];
   removeComponentFromCircuit: (componentId: string) => void;
   updateComponentValue: (componentId: string, value: string) => void;
   updateComponentReference: (componentId: string, reference: string) => void;
@@ -279,6 +282,7 @@ export interface AppState {
   loadProject: (data: Partial<AppState>) => void;
   resetProject: () => void;
   setProjectMetadata: (metadata: Partial<ProjectMetadata>) => void;
+  setActiveProjectId: (id: string) => void;
   markSaved: () => void;
   /** Autosave feedback: 'saving' while a write runs, 'saved' / 'error' afterwards */
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error', error?: string | null) => void;
@@ -359,6 +363,7 @@ export const useAppStore = create<AppState>((set, get) => {
       version: 1,
       appVersion: '0.1.0',
     },
+    activeProjectId: 'zeropcb-local-project',
     lastSaved: null,
     isDirty: false,
     saveStatus: 'idle',
@@ -497,6 +502,50 @@ export const useAppStore = create<AppState>((set, get) => {
       });
       
       return id;
+    },
+
+    duplicateComponents: (componentIds) => {
+      const state = get();
+      const originals = state.circuit.components.filter(component => componentIds.includes(component.id));
+      if (originals.length === 0) return [];
+      state.pushHistory();
+      const usedReferences = new Set(state.circuit.components.map(component => component.reference));
+      const newComponents = originals.map(original => {
+        const match = /^(\D+)(\d+)$/.exec(original.reference);
+        const prefix = match?.[1] || `${original.reference}_`;
+        let number = match ? Number(match[2]) + 1 : 1;
+        while (usedReferences.has(`${prefix}${number}`)) number++;
+        const duplicate = {
+          ...original,
+          id: crypto.randomUUID(),
+          reference: `${prefix}${number}`,
+          pins: new Map(original.pins),
+        };
+        usedReferences.add(duplicate.reference);
+        return duplicate;
+      });
+      const copiedNets = state.circuit.nets.map(net => ({
+        ...net,
+        pins: [
+          ...net.pins,
+          ...originals.flatMap((original, index) => net.pins
+            .filter(pin => pin.componentId === original.id)
+            .map(pin => ({ ...pin, componentId: newComponents[index].id }))),
+        ],
+      }));
+      const ids = newComponents.map(component => component.id);
+      set({
+        circuit: {
+          ...state.circuit,
+          components: [...state.circuit.components, ...newComponents],
+          nets: copiedNets,
+          updatedAt: Date.now(),
+        },
+        selectedComponentIds: new Set(ids),
+        optimizationStatus: `${newComponents.map(component => component.reference).join(', ')} added to the circuit; place the duplicate(s) on the board.`,
+        isDirty: true,
+      });
+      return ids;
     },
     
     removeComponentFromCircuit: (componentId) => {
@@ -1114,11 +1163,40 @@ export const useAppStore = create<AppState>((set, get) => {
         });
 
         if (movedExisting) {
+          set({ optimizationStatus: 'Routing both layouts to measure the proposal...' });
+          const { createRoutingContext, routeAllNets } = await import('../routing/engine');
+          const currentRouting = routeAllNets(createRoutingContext(
+            state.board,
+            state.placedComponents,
+            state.circuit.nets,
+            state.routes,
+            state.lockedRouteIds,
+            state.routingConfig,
+          ));
+          const proposedRouting = routeAllNets(createRoutingContext(
+            state.board,
+            result.placedComponents,
+            state.circuit.nets,
+            [],
+            new Set(),
+            state.routingConfig,
+          ));
+          const toMetrics = (routing: RoutingResult) => ({
+            unroutedNets: routing.unroutedNets.length,
+            jumpers: routing.stats.jumperCount,
+            jumperLengthMm: Math.round(routing.stats.jumperLength * state.boardConfig.dimensions.holePitchMm),
+            bends: routing.stats.totalBends,
+            crossings: routing.stats.totalCrossings,
+          });
           set({
-            placementProposal: result,
+            placementProposal: {
+              placement: result,
+              currentRouting: toMetrics(currentRouting),
+              proposedRouting: toMetrics(proposedRouting),
+            },
             placementResult: result,
             isOptimizing: false,
-            optimizationStatus: 'Review the proposed component moves before applying them.',
+            optimizationStatus: 'Routing metrics are ready; review the proposed moves before applying them.',
           });
           return;
         }
@@ -1149,16 +1227,19 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!proposal) return;
       get().pushHistory();
       set({
-        placedComponents: proposal.placedComponents,
+        placedComponents: proposal.placement.placedComponents,
         placementProposal: null,
-        placementResult: proposal,
-        optimizationStatus: proposal.success
-          ? `Placement applied: ${proposal.placedComponents.length} components placed.`
-          : `Placement applied with ${proposal.errors.length} placement issue(s).`,
+        placementResult: proposal.placement,
+        optimizationStatus: proposal.placement.success
+          ? `Placement applied: ${proposal.placement.placedComponents.length} components placed.`
+          : `Placement applied with ${proposal.placement.errors.length} placement issue(s).`,
         routes: [],
+        routingResult: null,
+        lockedRouteIds: new Set(),
         validationResult: null,
         isDirty: true,
       });
+      void get().runRouting();
     },
 
     rejectPlacementProposal: () => {
@@ -1642,6 +1723,7 @@ export const useAppStore = create<AppState>((set, get) => {
           version: 1,
           appVersion: '0.1.0',
         },
+        activeProjectId: 'zeropcb-local-project',
         lastSaved: null,
         isDirty: false,
         history: [],
@@ -1654,6 +1736,16 @@ export const useAppStore = create<AppState>((set, get) => {
         projectMetadata: { ...state.projectMetadata, ...metadata },
         isDirty: true,
       }));
+    },
+
+    setActiveProjectId: (id) => {
+      const safeId = id.trim() || 'zeropcb-local-project';
+      try {
+        window.localStorage.setItem('zeropcb-active-project-id', safeId);
+      } catch {
+        // Local project selection remains available in memory when storage is blocked.
+      }
+      set({ activeProjectId: safeId });
     },
     
     markSaved: () => {

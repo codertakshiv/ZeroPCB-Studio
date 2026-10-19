@@ -5,7 +5,8 @@
 import { BoardState, Coordinate, Pad, coordToKey, coordToLabel } from '../board/types';
 import { PlacedComponent, registerFootprint } from '../footprints/types';
 import { Circuit, Net } from '../circuit/types';
-import { Route, RouteSegment, RoutingConfig } from '../routing/types';
+import { Route, RoutingConfig, DEFAULT_ROUTING_CONFIG } from '../routing/types';
+import { extractJumperRuns } from '../routing/metrics';
 import { AssemblyGuide, AssemblyGroupBy, AssemblyProgress, AssemblyStep } from '../soldering/types';
 import { ValidationResult } from '../validation/types';
 
@@ -150,6 +151,8 @@ export interface ProjectFile {
   metadata: ProjectMetadata;
 }
 
+export const CURRENT_PROJECT_FORMAT = '1.1';
+
 export interface ProjectMetadata {
   name: string;
   description?: string;
@@ -168,7 +171,7 @@ export function createProjectFile(
   options: Partial<ProjectMetadata> = {}
 ): ProjectFile {
   return {
-    version: '1.0',
+    version: CURRENT_PROJECT_FORMAT,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     board,
@@ -299,7 +302,10 @@ export function generateJumperWireList(
   
   for (const route of routes) {
     const net = nets.find(n => n.id === route.netId);
-    const jumpers = splitRouteIntoJumpers(route, holePitchMm);
+    const jumpers = extractJumperRuns(route).map(run => ({
+      ...run,
+      length: Math.round(run.lengthHoles * holePitchMm),
+    }));
     
     for (const jumper of jumpers) {
       entries.push({
@@ -314,54 +320,6 @@ export function generateJumperWireList(
   }
   
   return entries;
-}
-
-function splitRouteIntoJumpers(route: Route, holePitchMm: number): { id: string; from: Coordinate; to: Coordinate; length: number; layer: string }[] {
-  const jumpers: { id: string; from: Coordinate; to: Coordinate; length: number; layer: string }[] = [];
-  
-  if (route.segments.length === 0) return jumpers;
-  
-  let currentJumper: { from: Coordinate; to: Coordinate; segments: RouteSegment[] } | null = null;
-  
-  for (const segment of route.segments) {
-    if (!currentJumper) {
-      currentJumper = { from: segment.from, to: segment.to, segments: [segment] };
-    } else if (
-      segment.from.row === currentJumper.to.row && 
-      segment.from.col === currentJumper.to.col &&
-      segment.layer === currentJumper.segments[0].layer
-    ) {
-      currentJumper.to = segment.to;
-      currentJumper.segments.push(segment);
-    } else {
-      const length = currentJumper.segments.reduce((sum, s) => 
-        sum + Math.abs(s.from.row - s.to.row) + Math.abs(s.from.col - s.to.col), 0
-      ) * holePitchMm;
-      jumpers.push({
-        id: crypto.randomUUID(),
-        from: currentJumper.from,
-        to: currentJumper.to,
-        length: Math.round(length),
-        layer: currentJumper.segments[0].layer,
-      });
-      currentJumper = { from: segment.from, to: segment.to, segments: [segment] };
-    }
-  }
-  
-  if (currentJumper) {
-    const length = currentJumper.segments.reduce((sum, s) => 
-      sum + Math.abs(s.from.row - s.to.row) + Math.abs(s.from.col - s.to.col), 0
-    ) * holePitchMm;
-    jumpers.push({
-      id: crypto.randomUUID(),
-      from: currentJumper.from,
-      to: currentJumper.to,
-      length: Math.round(length),
-      layer: currentJumper.segments[0].layer,
-    });
-  }
-  
-  return jumpers;
 }
 
 export function generateTrackCutList(board: BoardState): TrackCutListEntry[] {
@@ -565,9 +523,28 @@ export function importFromJSON(json: string): ProjectFile | null {
   return deserializeProject(json);
 }
 
-function migrateProject(project: ProjectFile): ProjectFile {
-  // Future: add migration logic for version changes
-  return project;
+export function migrateProject(project: ProjectFile): ProjectFile {
+  const sourceVersion = String(project.version || '1.0');
+  const [major, minor] = sourceVersion.split('.').map(part => Number.parseInt(part, 10) || 0);
+  if (major > 1 || (major === 1 && minor > 1)) {
+    throw new Error(`Project format ${sourceVersion} is newer than this ZeroPCB Studio build supports.`);
+  }
+
+  // 1.0 -> 1.1 added explicit defaults for routing preference and optional
+  // schematic/assembly metadata. Missing values are filled without changing
+  // the board, circuit, components, routes, or user lock states.
+  return {
+    ...project,
+    version: CURRENT_PROJECT_FORMAT,
+    routingPreference: project.routingPreference ?? DEFAULT_ROUTING_CONFIG.preference,
+    schematicPositions: project.schematicPositions ?? new Map(),
+    metadata: {
+      ...project.metadata,
+      name: project.metadata?.name || project.circuit.name || 'Untitled Project',
+      version: project.metadata?.version ?? 1,
+      appVersion: project.metadata?.appVersion || '0.1.0',
+    },
+  };
 }
 
 export type { BoardState } from '../board/types';

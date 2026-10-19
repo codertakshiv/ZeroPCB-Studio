@@ -75,8 +75,19 @@ export function PlacementPanel() {
         <Panel title="Review placement changes">
           <div className="flex flex-col gap-2 text-xs">
             <p className="text-muted">These positions will change only if you apply this proposal. Locked components stay fixed.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <RoutingMetricSummary label="Current layout" metrics={placementProposal.currentRouting} />
+              <RoutingMetricSummary label="Proposed layout" metrics={placementProposal.proposedRouting} />
+            </div>
+            <p className="text-[10px] text-muted">
+              {compareRouteMetrics(placementProposal.proposedRouting, placementProposal.currentRouting) < 0
+                ? 'Measured routing improves by the priority order: unrouted nets, jumpers, wire length, bends, then crossings.'
+                : compareRouteMetrics(placementProposal.proposedRouting, placementProposal.currentRouting) > 0
+                  ? 'This layout routes worse by the measured priorities. Apply only if you prefer its component arrangement.'
+                  : 'Routing metrics are unchanged for this proposal.'}
+            </p>
             <div className="max-h-40 overflow-auto flex flex-col gap-1">
-              {placementProposal.placedComponents.filter(component => {
+              {placementProposal.placement.placedComponents.filter(component => {
                 const original = placedComponents.find(current => current.id === component.id);
                 return !original || original.position.row !== component.position.row || original.position.col !== component.position.col || original.orientation !== component.orientation;
               }).map(component => {
@@ -91,7 +102,7 @@ export function PlacementPanel() {
                 );
               })}
             </div>
-            {!placementProposal.success && <p className="text-amber-600">This proposal leaves {placementProposal.unplacedComponents.length} component(s) unplaced.</p>}
+            {!placementProposal.placement.success && <p className="text-amber-600">This proposal leaves {placementProposal.placement.unplacedComponents.length} component(s) unplaced.</p>}
             <div className="flex gap-2">
               <Button variant="primary" className="flex-1" onClick={acceptPlacementProposal}>Apply proposal</Button>
               <Button className="flex-1" onClick={rejectPlacementProposal}>Reject</Button>
@@ -138,6 +149,40 @@ export function PlacementPanel() {
           </div>
         </Panel>
       )}
+    </div>
+  );
+}
+
+function compareRouteMetrics(
+  a: { unroutedNets: number; jumpers: number; jumperLengthMm: number; bends: number; crossings: number },
+  b: { unroutedNets: number; jumpers: number; jumperLengthMm: number; bends: number; crossings: number },
+) {
+  for (const [left, right] of [
+    [a.unroutedNets, b.unroutedNets],
+    [a.jumpers, b.jumpers],
+    [a.jumperLengthMm, b.jumperLengthMm],
+    [a.bends, b.bends],
+    [a.crossings, b.crossings],
+  ]) {
+    if (left !== right) return left < right ? -1 : 1;
+  }
+  return 0;
+}
+
+function RoutingMetricSummary({ label, metrics }: {
+  label: string;
+  metrics: { unroutedNets: number; jumpers: number; jumperLengthMm: number; bends: number; crossings: number };
+}) {
+  return (
+    <div className="rounded border border-app p-2">
+      <div className="mb-1 text-[10px] font-semibold text-app">{label}</div>
+      <div className="grid grid-cols-2 gap-x-1 text-[10px] text-muted">
+        <span>Unrouted</span><span className="text-right text-app">{metrics.unroutedNets}</span>
+        <span>Jumpers</span><span className="text-right text-app">{metrics.jumpers}</span>
+        <span>Wire</span><span className="text-right text-app">{metrics.jumperLengthMm} mm</span>
+        <span>Bends</span><span className="text-right text-app">{metrics.bends}</span>
+        <span>Crossings</span><span className="text-right text-app">{metrics.crossings}</span>
+      </div>
     </div>
   );
 }

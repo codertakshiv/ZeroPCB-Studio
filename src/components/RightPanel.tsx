@@ -2,8 +2,9 @@
  * Right panel - tabbed: Inspector, Placement, Routing, Validation, Assembly, Export
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../app/store';
+import type { WorkspaceStage } from '../app/stages';
 import { PlacementPanel } from './PlacementPanel';
 import { RoutingPanel } from './RoutingPanel';
 import { ValidationPanel } from './ValidationPanel';
@@ -13,19 +14,7 @@ import { Panel, Button, Input } from './ui';
 import { getFootprintById, Orientation } from '../footprints/types';
 import { coordToLabel } from '../board/types';
 
-type RightTab = 'inspector' | 'placement' | 'routing' | 'validation' | 'assembly' | 'export';
-
-const TABS: { id: RightTab; label: string; icon: string }[] = [
-  { id: 'inspector', label: 'Inspect', icon: '🔍' },
-  { id: 'placement', label: 'Place', icon: '⬚' },
-  { id: 'routing', label: 'Route', icon: '〰' },
-  { id: 'validation', label: 'Check', icon: '✓' },
-  { id: 'assembly', label: 'Build', icon: '🔧' },
-  { id: 'export', label: 'Export', icon: '⇩' },
-];
-
-export function RightPanel() {
-  const [activeTab, setActiveTab] = useState<RightTab>('inspector');
+export function RightPanel({ activeStage }: { activeStage: WorkspaceStage }) {
   const validationResult = useAppStore(s => s.validationResult);
   const circuit = useAppStore(s => s.circuit);
   
@@ -33,26 +22,13 @@ export function RightPanel() {
   
   return (
     <div className="flex flex-col h-full">
-      {/* Permanent 2×3 tab grid - all sections always visible, no scrolling */}
-      <div className="grid grid-cols-3 gap-1 p-2 border-b border-app bg-panel" data-testid="right-tabs">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            className={`flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap ${
-              activeTab === tab.id ? '' : 'text-muted hover-bg'
-            }`}
-            style={activeTab === tab.id ? { backgroundColor: 'var(--accent)', color: 'var(--accent-ink)' } : {}}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <span aria-hidden>{tab.icon}</span>
-            <span>{tab.label}</span>
-            {tab.id === 'validation' && errorCount > 0 && (
-              <span className="px-1 rounded-full text-[8px] text-white" style={{ backgroundColor: 'var(--danger)' }}>
-                {errorCount}
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-app bg-panel">
+        <span className="text-[10px] uppercase tracking-widest text-muted">
+          {activeStage === 'project' ? 'Inspector' : activeStage === 'circuit' ? 'Circuit properties' : activeStage}
+        </span>
+        {activeStage === 'validation' && errorCount > 0 && (
+          <span className="rounded px-1.5 py-0.5 text-[9px] text-white" style={{ backgroundColor: 'var(--danger)' }}>{errorCount} errors</span>
+        )}
       </div>
       
       {circuit.components.length === 0 && (
@@ -65,12 +41,12 @@ export function RightPanel() {
       )}
       
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3">
-        {activeTab === 'inspector' && <InspectorPanel />}
-        {activeTab === 'placement' && <PlacementPanel />}
-        {activeTab === 'routing' && <RoutingPanel />}
-        {activeTab === 'validation' && <ValidationPanel />}
-        {activeTab === 'assembly' && <AssemblyPanel />}
-        {activeTab === 'export' && <ExportPanel />}
+        {(activeStage === 'project' || activeStage === 'circuit') && <InspectorPanel />}
+        {activeStage === 'placement' && <PlacementPanel />}
+        {activeStage === 'routing' && <RoutingPanel />}
+        {activeStage === 'validation' && <ValidationPanel />}
+        {activeStage === 'assembly' && <AssemblyPanel />}
+        {activeStage === 'export' && <ExportPanel />}
       </div>
     </div>
   );
@@ -86,11 +62,6 @@ function ComponentPositionEditor({ componentId, position, orientation, locked, p
   const [row, setRow] = useState(String(position.row + 1));
   const [col, setCol] = useState(String(position.col + 1));
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    setRow(String(position.row + 1));
-    setCol(String(position.col + 1));
-  }, [position.row, position.col]);
 
   const commit = () => {
     const rowNumber = Number.parseInt(row, 10);
@@ -136,6 +107,7 @@ function InspectorPanel() {
   const rotateComponent = useAppStore(s => s.rotateComponent);
   const unplaceComponent = useAppStore(s => s.unplaceComponent);
   const removeComponentFromCircuit = useAppStore(s => s.removeComponentFromCircuit);
+  const duplicateComponents = useAppStore(s => s.duplicateComponents);
   const updateComponentValue = useAppStore(s => s.updateComponentValue);
   const updateComponentReference = useAppStore(s => s.updateComponentReference);
   const placeComponent = useAppStore(s => s.placeComponent);
@@ -243,7 +215,7 @@ function InspectorPanel() {
                 />
               </div>
               
-              <ComponentPositionEditor componentId={comp.id} position={comp.position} orientation={comp.orientation} locked={comp.locked} placeComponent={placeComponent} />
+              <ComponentPositionEditor key={`${comp.id}-${comp.position.row}-${comp.position.col}`} componentId={comp.id} position={comp.position} orientation={comp.orientation} locked={comp.locked} placeComponent={placeComponent} />
               
               <div className="flex flex-wrap gap-1">
                 <Button size="sm" onClick={() => rotateComponent(comp.id, 'ccw')} title="Rotate counter-clockwise">↺</Button>
@@ -258,6 +230,7 @@ function InspectorPanel() {
               </div>
               
               <div className="flex gap-1">
+                <Button size="sm" onClick={() => duplicateComponents([comp.id])} title="Duplicate component (Ctrl+D)">Duplicate</Button>
                 <Button size="sm" onClick={() => unplaceComponent(comp.id)} title="Remove from board but keep in circuit">
                   Unplace
                 </Button>

@@ -12,7 +12,7 @@
  *    detection (zustand replaces changed slices, so `===` is enough)
  */
 
-import { createProjectFile } from '../exporters/types';
+import { createProjectFile, migrateProject } from '../exporters/types';
 import type { ProjectFile, ProjectMetadata } from '../exporters/types';
 import type { BoardConfig, BoardState } from '../board/types';
 import type { Circuit } from '../circuit/types';
@@ -156,22 +156,23 @@ export function storedToLoadPayload(stored: ProjectFile): {
   assemblyProgress: AssemblyProgress | null;
   routingConfig: RoutingConfig;
 } {
+  const project = migrateProject(stored);
   return {
-    board: stored.board,
-    boardConfig: stored.board.config,
-    circuit: stored.circuit,
-    netIdCounter: stored.netIdCounter,
-    placedComponents: stored.components,
-    routes: stored.routes,
-    projectMetadata: stored.metadata,
-    schematicPositions: stored.schematicPositions,
-    schematicCanvasSize: stored.schematicCanvasSize,
-    validationResult: stored.validation ?? null,
-    assemblyGuide: stored.assemblyGuide ?? null,
-    assemblyProgress: stored.assemblyProgress
-      ? { ...stored.assemblyProgress, completedStepIds: new Set(stored.assemblyProgress.completedStepIds) }
+    board: project.board,
+    boardConfig: project.board.config,
+    circuit: project.circuit,
+    netIdCounter: project.netIdCounter,
+    placedComponents: project.components,
+    routes: project.routes,
+    projectMetadata: project.metadata,
+    schematicPositions: project.schematicPositions,
+    schematicCanvasSize: project.schematicCanvasSize,
+    validationResult: project.validation ?? null,
+    assemblyGuide: project.assemblyGuide ?? null,
+    assemblyProgress: project.assemblyProgress
+      ? { ...project.assemblyProgress, completedStepIds: new Set(project.assemblyProgress.completedStepIds) }
       : null,
-    routingConfig: { ...DEFAULT_ROUTING_CONFIG, preference: stored.routingPreference ?? DEFAULT_ROUTING_CONFIG.preference },
+    routingConfig: { ...DEFAULT_ROUTING_CONFIG, preference: project.routingPreference ?? DEFAULT_ROUTING_CONFIG.preference },
   };
 }
 

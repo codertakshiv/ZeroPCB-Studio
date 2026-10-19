@@ -2,7 +2,8 @@
  * Left sidebar - Board setup and Circuit editing
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
+import type { WorkspaceStage } from '../app/stages';
 import { useAppStore } from '../app/store';
 import { BoardSetupPanel } from './BoardSetupPanel';
 import { ComponentLibraryPanel } from './ComponentLibraryPanel';
@@ -11,8 +12,8 @@ import { getFootprintById } from '../footprints/types';
 
 type LeftTab = 'board' | 'components' | 'circuit';
 
-export function LeftPanel() {
-  const [activeTab, setActiveTab] = useState<LeftTab>('board');
+export function LeftPanel({ activeStage, onStageChange }: { activeStage: WorkspaceStage; onStageChange: (stage: WorkspaceStage) => void }) {
+  const activeTab: LeftTab = activeStage === 'circuit' ? 'circuit' : activeStage === 'placement' ? 'components' : 'board';
   const circuit = useAppStore(s => s.circuit);
   const placedComponents = useAppStore(s => s.placedComponents);
   
@@ -31,14 +32,14 @@ export function LeftPanel() {
         <button
           className={`flex-1 px-2 py-2.5 text-xs font-medium border-b-2 transition-colors ${activeTab === 'board' ? 'text-app' : 'text-muted border-transparent hover-bg'}`}
           style={activeTab === 'board' ? { borderBottomColor: 'var(--accent)' } : {}}
-          onClick={() => setActiveTab('board')}
+          onClick={() => onStageChange('project')}
         >
           Board
         </button>
         <button
           className={`flex-1 px-2 py-2.5 text-xs font-medium border-b-2 transition-colors ${activeTab === 'components' ? 'text-app' : 'text-muted border-transparent hover-bg'}`}
           style={activeTab === 'components' ? { borderBottomColor: 'var(--accent)' } : {}}
-          onClick={() => setActiveTab('components')}
+          onClick={() => onStageChange('placement')}
         >
           Library
           {unplacedCount > 0 && (
@@ -50,7 +51,7 @@ export function LeftPanel() {
         <button
           className={`flex-1 px-2 py-2.5 text-xs font-medium border-b-2 transition-colors ${activeTab === 'circuit' ? 'text-app' : 'text-muted border-transparent hover-bg'}`}
           style={activeTab === 'circuit' ? { borderBottomColor: 'var(--accent)' } : {}}
-          onClick={() => setActiveTab('circuit')}
+          onClick={() => onStageChange('circuit')}
         >
           Circuit
           {unconnectedCount > 0 && (

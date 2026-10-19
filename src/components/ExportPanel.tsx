@@ -2,7 +2,7 @@
  * Export panel - all export operations
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../app/store';
 import { Panel, Button } from './ui';
 import { renderBoardSVG } from '../exporters/svg';
@@ -17,6 +17,7 @@ import { downloadTextFile, downloadBlob, svgToPNG, printHTML, sanitizeFilename }
 import { generatePrintableGuide } from '../exporters/print';
 import { createProjectFile, serializeProject, deserializeProject } from '../exporters/types';
 import { getStorage } from '../storage/types';
+import type { StoredProject } from '../storage/types';
 import {
   LOCAL_PROJECT_ID,
   buildStoredProject,
@@ -43,9 +44,28 @@ export function ExportPanel() {
   const saveStatusAt = useAppStore(s => s.saveStatusAt);
   const saveError = useAppStore(s => s.saveError);
   const setSaveStatus = useAppStore(s => s.setSaveStatus);
+  const activeProjectId = useAppStore(s => s.activeProjectId);
+  const setActiveProjectId = useAppStore(s => s.setActiveProjectId);
+  const setProjectMetadata = useAppStore(s => s.setProjectMetadata);
   
   const [exporting, setExporting] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [savedProjects, setSavedProjects] = useState<StoredProject[]>([]);
+  const [copyName, setCopyName] = useState('');
+
+  const refreshSavedProjects = async () => {
+    try {
+      const storage = await getStorage();
+      setSavedProjects((await storage.getAllProjects()).sort((a, b) => b.updatedAt - a.updatedAt));
+    } catch {
+      setSavedProjects([]);
+    }
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refreshSavedProjects(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   
   const baseName = sanitizeFilename(projectMetadata.name || circuit.name || 'zeropcb-project');
   
@@ -102,6 +122,8 @@ export function ExportPanel() {
     project.schematicPositions = useAppStore.getState().schematicPositions;
     project.schematicCanvasSize = useAppStore.getState().schematicCanvasSize;
     project.routingPreference = useAppStore.getState().routingConfig.preference;
+    project.assemblyProgress = useAppStore.getState().assemblyProgress || undefined;
+    project.netIdCounter = useAppStore.getState().netIdCounter;
     
     downloadTextFile(serializeProject(project), `${baseName}.json`, 'application/json');
     markSaved();
@@ -118,16 +140,8 @@ export function ExportPanel() {
           return;
         }
         
-        loadProject({
-          board: project.board,
-          boardConfig: project.board.config,
-          circuit: project.circuit,
-          placedComponents: project.components,
-          routes: project.routes,
-          projectMetadata: project.metadata,
-          schematicPositions: project.schematicPositions,
-          schematicCanvasSize: project.schematicCanvasSize,
-        });
+        setActiveProjectId(`project-${crypto.randomUUID()}`);
+        loadProject(storedToLoadPayload(project));
         flash('✓ Project loaded');
       } catch (err) {
         flash(`✗ Failed to parse project: ${err instanceof Error ? err.message : 'invalid JSON'}`);
@@ -140,16 +154,16 @@ export function ExportPanel() {
     setSaveStatus('saving');
     try {
       const storage = await getStorage();
-      // Same slot the autosave uses: one local project per browser
-      const existing = await storage.getProject(LOCAL_PROJECT_ID);
+      const existing = await storage.getProject(activeProjectId);
       const stored = buildStoredProject(persistedSliceOf(useAppStore.getState()), {
-        id: LOCAL_PROJECT_ID,
+        id: activeProjectId,
         createdAt: existing?.createdAt,
       });
       
       await storage.saveProject(stored);
       markSaved();
       setSaveStatus('saved');
+      await refreshSavedProjects();
       flash('✓ Saved to browser storage');
     } catch (e) {
       setSaveStatus('error', e instanceof Error ? e.message : 'browser storage unavailable');
@@ -167,13 +181,66 @@ export function ExportPanel() {
         return;
       }
       
-      const mostRecent = projects.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const mostRecent = projects.find(project => project.id === activeProjectId)
+        || projects.sort((a, b) => b.updatedAt - a.updatedAt)[0];
       
+      setActiveProjectId(mostRecent.id);
       loadProject(storedToLoadPayload(mostRecent));
       setSaveStatus('saved');
+      await refreshSavedProjects();
       flash(`✓ Loaded "${mostRecent.metadata.name}"`);
     } catch (e) {
       flash(`✗ Load failed: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  };
+
+  const saveNamedCopy = async () => {
+    const name = copyName.trim() || `${projectMetadata.name || circuit.name || 'Untitled Project'} copy`;
+    try {
+      const storage = await getStorage();
+      const id = `project-${crypto.randomUUID()}`;
+      const state = persistedSliceOf(useAppStore.getState());
+      const namedState = { ...state, projectMetadata: { ...state.projectMetadata, name } };
+      await storage.saveProject(buildStoredProject(namedState, { id }));
+      setActiveProjectId(id);
+      setProjectMetadata({ name });
+      markSaved();
+      setSaveStatus('saved');
+      setCopyName('');
+      flash(`Saved project "${name}"`);
+      await refreshSavedProjects();
+    } catch (error) {
+      flash(`Save failed: ${error instanceof Error ? error.message : 'browser storage unavailable'}`);
+    }
+  };
+
+  const openProject = async (projectId: string) => {
+    try {
+      const storage = await getStorage();
+      const project = await storage.getProject(projectId);
+      if (!project) return;
+      setActiveProjectId(project.id);
+      loadProject(storedToLoadPayload(project));
+      setSaveStatus('saved');
+      flash(`Loaded "${project.metadata.name}"`);
+    } catch (error) {
+      flash(`Load failed: ${error instanceof Error ? error.message : 'browser storage unavailable'}`);
+    }
+  };
+
+  const deleteProject = async (projectId: string, name: string) => {
+    if (!confirm(`Delete the saved project "${name}"? This cannot be undone.`)) return;
+    try {
+      const storage = await getStorage();
+      await storage.deleteProject(projectId);
+      if (projectId === activeProjectId) {
+        setActiveProjectId(LOCAL_PROJECT_ID);
+        resetProject();
+      }
+      await refreshSavedProjects();
+      flash(`Deleted "${name}"`);
+    } catch (error) {
+      flash(`Delete failed: ${error instanceof Error ? error.message : 'browser storage unavailable'}`);
     }
   };
   
@@ -338,12 +405,36 @@ ${guide.steps.map(step => `<tr><td><div class="check"></div></td><td>${step.orde
         </div>
       </Panel>
       
-      <Panel title="Browser Storage" defaultOpen={false}>
+      <Panel title="Browser Storage" alwaysOpen>
         <div className="grid grid-cols-2 gap-2">
           <Button size="sm" onClick={saveToIndexedDB}>💾 Save</Button>
           <Button size="sm" onClick={loadFromIndexedDB}>📂 Load</Button>
         </div>
-        <div className="flex items-center gap-1.5 mt-2 text-[10px]" data-testid="save-status">
+        <div className="mt-3 grid grid-cols-[1fr_auto] gap-1.5">
+          <input
+            aria-label="New project name"
+            value={copyName}
+            onChange={event => setCopyName(event.target.value)}
+            placeholder={`${projectMetadata.name || 'Project'} copy`}
+            className="min-w-0 rounded border border-app bg-app px-2 py-1 text-xs text-app"
+          />
+          <Button size="sm" onClick={saveNamedCopy}>Save copy</Button>
+        </div>
+        <div className="mt-3 flex flex-col gap-1" data-testid="saved-project-list">
+          <div className="text-[10px] uppercase tracking-widest text-muted">Saved projects</div>
+          {savedProjects.length === 0 && <p className="text-[10px] text-muted">No saved projects yet.</p>}
+          {savedProjects.map(project => (
+            <div key={project.id} className="flex items-center gap-1 rounded border border-app px-2 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs text-app">{project.metadata.name}</div>
+                <div className="text-[9px] text-muted">{new Date(project.updatedAt).toLocaleString()}</div>
+              </div>
+              {project.id === activeProjectId && <span className="text-[9px] text-muted">Open</span>}
+              <Button size="sm" onClick={() => void openProject(project.id)}>Open</Button>
+              <Button size="sm" onClick={() => void deleteProject(project.id, project.metadata.name)} title={`Delete ${project.metadata.name}`}>×</Button>
+            </div>
+          ))}
+        </div>        <div className="flex items-center gap-1.5 mt-2 text-[10px]" data-testid="save-status">
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${saveStatus === 'saving' ? 'animate-pulse' : ''}`}
             style={{

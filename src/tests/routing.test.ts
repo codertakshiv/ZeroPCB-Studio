@@ -222,8 +222,8 @@ describe('Net routing', () => {
     const route = routeNet(context, net);
     
     expect(route).not.toBeNull();
-    // MST: (2,2)->(5,2) is 3, (5,2)->(8,2) is 3, total 6
-    expect(route!.length).toBe(6);
+    // The second span detours around R1's unconnected pin lead at (6,2).
+    expect(route!.length).toBe(8);
   });
 
   it('returns empty route when stripboard already connects all pins', () => {
@@ -252,6 +252,22 @@ describe('Net routing', () => {
     expect(route!.segments.length).toBe(0); // No wires needed - the strip does it
   });
 
+  it('refuses to route a net across copper shared by a different net', () => {
+    const stripConfig: BoardConfig = { ...config, type: 'stripboard', stripDirection: 'horizontal' };
+    const board = createEmptyBoard(stripConfig);
+    const r1 = placeComponent('r1', 'R1', { row: 5, col: 2 }, 90, RESISTOR_AXIAL, { p1: 'n1' });
+    const r2 = placeComponent('r2', 'R2', { row: 5, col: 10 }, 90, RESISTOR_AXIAL, { p1: 'n1' });
+    const shorted = placeComponent('r3', 'R3', { row: 5, col: 6 }, 90, RESISTOR_AXIAL, { p1: 'n2' });
+    const net: Net = { id: 'n1', name: 'N1', pins: [
+      { componentId: 'r1', pinId: 'p1', pinName: '1', pinNumber: '1' },
+      { componentId: 'r2', pinId: 'p1', pinName: '1', pinNumber: '1' },
+    ] };
+    const result = routeAllNets(createRoutingContext(board, [r1, r2, shorted], [net], [], new Set()));
+    expect(result.unroutedNets).toEqual(['n1']);
+    expect(result.errors[0].code).toBe('STRIPBOARD_NET_CONFLICT');
+    expect(result.routes).toHaveLength(0);
+  });
+
   it('routes multiple nets without overlapping same-net pairs', () => {
     const board = createEmptyBoard(config);
     const r1 = placeComponent('r1', 'R1', { row: 3, col: 3 }, 90, RESISTOR_AXIAL, { p1: 'n1', p2: 'n2' });
@@ -273,6 +289,40 @@ describe('Net routing', () => {
     
     expect(result.routes.length).toBe(2);
     expect(result.unroutedNets.length).toBe(0);
+  });
+
+  it('does not reuse a routed perfboard pad for another net', () => {
+    const board = createEmptyBoard(config);
+    const endpoint = (id: string, row: number, col: number, netId: string) => {
+      const component = placeComponent(id, id.toUpperCase(), { row, col }, 0, RESISTOR_AXIAL, { p1: netId });
+      component.pinPositions = new Map([['p1', { row, col }]]);
+      component.nets = new Map([['p1', netId]]);
+      return component;
+    };
+    const components = [
+      endpoint('a1', 7, 1, 'horizontal'),
+      endpoint('a2', 7, 13, 'horizontal'),
+      endpoint('b1', 1, 7, 'vertical'),
+      endpoint('b2', 13, 7, 'vertical'),
+    ];
+    const nets: Net[] = [
+      { id: 'horizontal', name: 'H', pins: [
+        { componentId: 'a1', pinId: 'p1', pinName: '1', pinNumber: '1' },
+        { componentId: 'a2', pinId: 'p1', pinName: '1', pinNumber: '1' },
+      ] },
+      { id: 'vertical', name: 'V', pins: [
+        { componentId: 'b1', pinId: 'p1', pinName: '1', pinNumber: '1' },
+        { componentId: 'b2', pinId: 'p1', pinName: '1', pinNumber: '1' },
+      ] },
+    ];
+
+    const result = routeAllNets(createRoutingContext(board, components, nets, [], new Set()));
+    expect(result.unroutedNets).toHaveLength(0);
+    const routePads = result.routes.map(route => new Set(route.segments.flatMap(segment => [
+      `${segment.from.row},${segment.from.col}`,
+      `${segment.to.row},${segment.to.col}`,
+    ])));
+    expect([...routePads[0]].some(pad => routePads[1].has(pad))).toBe(false);
   });
 });
 

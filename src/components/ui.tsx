@@ -8,12 +8,14 @@ export function Panel({
   title, 
   children, 
   defaultOpen = true,
+  alwaysOpen = false,
   actions,
   className = '',
 }: { 
   title: string; 
   children: React.ReactNode; 
   defaultOpen?: boolean;
+  alwaysOpen?: boolean;
   actions?: React.ReactNode;
   className?: string;
 }) {
@@ -23,16 +25,16 @@ export function Panel({
     <div className={`border border-app rounded-xl overflow-hidden bg-panel panel-card ${className}`}>
       <button
         className="w-full flex items-center justify-between px-3.5 py-2.5 hover-bg text-left"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
+        onClick={() => { if (!alwaysOpen) setOpen(!open); }}
+        aria-expanded={alwaysOpen || open}
       >
         <span className="text-[13px] font-semibold text-app tracking-tight">{title}</span>
         <span className="flex items-center gap-2">
           {actions}
-          <span className="text-muted text-xs">{open ? '▾' : '▸'}</span>
+          <span className="text-muted text-xs">{alwaysOpen || open ? '▾' : '▸'}</span>
         </span>
       </button>
-      {open && (
+      {(alwaysOpen || open) && (
         <div className="px-3.5 py-3 border-t border-app">
           {children}
         </div>

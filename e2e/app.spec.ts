@@ -292,6 +292,31 @@ test.describe('ZeroPCB Studio', () => {
     await expect(page.getByText('R1').first()).toBeVisible();
   });
 
+  test('switches between named local projects without replacing saved content', async ({ page }) => {
+    await page.goto('/');
+    await addFootprint(page, 'Axial Resistor', 'Axial Resistor');
+    await autoPlace(page);
+    await openRightTab(page, 'Export');
+    await page.getByLabel('New project name').fill('Resistor layout');
+    await page.getByRole('button', { name: 'Save copy' }).click();
+    await expect(page.getByText('Saved project "Resistor layout"')).toBeVisible();
+
+    await addFootprint(page, 'LED 5mm', 'LED 5mm');
+    await expect(page.getByText('D1').first()).toBeVisible();
+    await openRightTab(page, 'Export');
+    const savedList = page.getByTestId('saved-project-list');
+    await savedList.getByRole('button', { name: 'Open' }).first().click();
+    await expect(page.getByText('Loaded "Resistor layout"')).toBeVisible();
+    await openCircuit(page);
+    await expect(page.getByText('R1').first()).toBeVisible();
+    await expect(page.getByText('D1')).toHaveCount(0);
+
+    await page.reload();
+    await openCircuit(page);
+    await expect(page.getByText('R1').first()).toBeVisible();
+    await expect(page.getByText('D1')).toHaveCount(0);
+  });
+
   test('autosaves the project and restores it after a refresh', async ({ page }) => {
     await page.goto('/');
 

@@ -24,6 +24,13 @@ import {
 export function useProjectPersistence(): void {
   useEffect(() => {
     let disposed = false;
+    let activeProjectId = useAppStore.getState().activeProjectId;
+    try {
+      activeProjectId = window.localStorage.getItem('zeropcb-active-project-id') || activeProjectId;
+      useAppStore.getState().setActiveProjectId(activeProjectId);
+    } catch {
+      // Keep the in-memory default project when localStorage is unavailable.
+    }
     /** Last saved/restored design; `null` means "save the next change right away" */
     let baseline: PersistedProjectState | null = persistedSliceOf(useAppStore.getState());
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -52,10 +59,10 @@ export function useProjectPersistence(): void {
       try {
         const storage = await getStorage();
         if (createdAt === null) {
-          const existing = await storage.getProject(LOCAL_PROJECT_ID);
+        const existing = await storage.getProject(activeProjectId);
           createdAt = existing?.createdAt ?? Date.now();
         }
-        const record = buildStoredProject(before, { id: LOCAL_PROJECT_ID, createdAt });
+        const record = buildStoredProject(before, { id: activeProjectId, createdAt });
         await storage.saveProject(record);
         if (disposed) return;
         baseline = before;
@@ -83,6 +90,13 @@ export function useProjectPersistence(): void {
     // Watch every store change; only design slices trigger a save
     const unsubscribe = useAppStore.subscribe(() => {
       if (!hydrated || disposed) return;
+      const selectedProjectId = useAppStore.getState().activeProjectId;
+      if (selectedProjectId !== activeProjectId) {
+        activeProjectId = selectedProjectId;
+        createdAt = null;
+        baseline = sliceOf();
+        return;
+      }
       const current = sliceOf();
       if (baseline && samePersistedState(baseline, current)) return;
       schedule();
@@ -94,7 +108,9 @@ export function useProjectPersistence(): void {
       try {
         const storage = await getStorage();
         const projects = await storage.getAllProjects();
-        const latest = projects.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        const selected = await storage.getProject(activeProjectId);
+        const localDefault = projects.find(project => project.id === LOCAL_PROJECT_ID);
+        const latest = selected || localDefault || projects.sort((a, b) => b.updatedAt - a.updatedAt)[0];
         if (!disposed && latest) {
           const store = useAppStore.getState();
           // Never clobber work the user already started in this session

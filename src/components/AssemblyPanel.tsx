@@ -18,6 +18,7 @@ export function AssemblyPanel() {
   const clearHighlights = useAppStore(s => s.clearHighlights);
   const placedComponents = useAppStore(s => s.placedComponents);
   const validationResult = useAppStore(s => s.validationResult);
+  const routingResult = useAppStore(s => s.routingResult);
   const [groupBy, setGroupBy] = React.useState<'sequence' | 'component' | 'net' | 'side'>('sequence');
   
   const completedCount = assemblyProgress?.completedStepIds.size || 0;
@@ -38,6 +39,7 @@ export function AssemblyPanel() {
   }, [currentStep, highlightCoordinates, clearHighlights]);
   
   const hasErrors = validationResult && !validationResult.isValid;
+  const hasUnroutedNets = (routingResult?.unroutedNets.length ?? 0) > 0;
   
   return (
     <div className="flex flex-col gap-3">
@@ -55,6 +57,18 @@ export function AssemblyPanel() {
           <div className="mt-2 px-2 py-1 rounded text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
             ⚠ Board has validation errors. The guide reflects the current layout,
             but fix validation issues before soldering.
+          </div>
+        )}
+
+        {!validationResult && (
+          <div className="mt-2 px-2 py-1 rounded text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+            Run Check before soldering so board validation status is current.
+          </div>
+        )}
+
+        {hasUnroutedNets && (
+          <div className="mt-2 px-2 py-1 rounded text-[10px] bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200">
+            Routing is incomplete: {routingResult?.unroutedNets.length} net(s) remain unrouted. Resolve these before soldering.
           </div>
         )}
         

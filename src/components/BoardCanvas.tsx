@@ -24,6 +24,8 @@ const PX_PER_MM = 5;
 export interface BoardCanvasProps {
   board: BoardState;
   components: PlacedComponent[];
+  /** Ghosted target positions shown while the user reviews an optimization. */
+  proposalComponents?: PlacedComponent[];
   routes: Route[];
   nets: Net[];
   side: BoardSide;
@@ -48,6 +50,7 @@ export interface BoardCanvasProps {
 export function BoardCanvas({
   board,
   components,
+  proposalComponents = [],
   routes,
   nets,
   side,
@@ -416,6 +419,37 @@ export function BoardCanvas({
           onPinPointerDown={handlePinPointerDown}
           onComponentClick={onComponentClick}
         />
+      )}
+
+      {renderComponents && proposalComponents.length > 0 && (
+        <g data-testid="placement-preview" pointerEvents="none" opacity={0.55}>
+          <ComponentsLayer
+            components={proposalComponents}
+            toPixel={toPixel}
+            selectedComponentIds={new Set()}
+            highlightedCoordinates={new Set()}
+            palette={palette}
+            interactive={false}
+            draggingComponentId={null}
+          />
+          {proposalComponents.map(component => {
+            const a = toPixel({ row: component.boundingBox.minRow, col: component.boundingBox.minCol });
+            const b = toPixel({ row: component.boundingBox.maxRow, col: component.boundingBox.maxCol });
+            return (
+              <rect
+                key={`proposal-${component.id}`}
+                x={Math.min(a.x, b.x) - PX_PER_MM * 0.6}
+                y={Math.min(a.y, b.y) - PX_PER_MM * 0.6}
+                width={Math.abs(b.x - a.x) + PX_PER_MM * 1.2}
+                height={Math.abs(b.y - a.y) + PX_PER_MM * 1.2}
+                fill="none"
+                stroke="var(--highlight)"
+                strokeWidth={1.8}
+                strokeDasharray="4 3"
+              />
+            );
+          })}
+        </g>
       )}
       
       {/* Routes (solder side primarily; show component-side wires on component side if any) */}

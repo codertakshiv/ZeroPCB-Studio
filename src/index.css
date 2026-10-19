@@ -176,6 +176,91 @@ a:focus-visible,
   }
 }
 
+/* Compact, persistent stage navigation for the engineering workflow. */
+.stage-navigation {
+  min-height: 40px;
+  scrollbar-width: none;
+}
+
+.stage-navigation::-webkit-scrollbar {
+  display: none;
+}
+
+.stage-tab {
+  min-height: 29px;
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.stage-tab-active {
+  color: var(--text);
+  background: var(--hover-bg);
+  border-left-color: var(--accent);
+}
+
+.mobile-panel-toggle {
+  display: none;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.mobile-panel-toggle:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+}
+
+@media (max-width: 1023px) {
+  .mobile-panel-toggle {
+    display: inline-flex;
+  }
+
+  .app-sidebar-right.mobile-visible {
+    display: flex;
+    position: fixed;
+    z-index: 30;
+    top: 88px;
+    right: 0;
+    bottom: 20px;
+    width: min(90vw, 360px);
+    border: 1px solid var(--border);
+    box-shadow: var(--panel-shadow);
+  }
+}
+
+@media (max-width: 767px) {
+  .app-sidebar-left.mobile-visible {
+    display: flex;
+    position: fixed;
+    z-index: 30;
+    top: 88px;
+    left: 0;
+    bottom: 20px;
+    width: min(90vw, 340px);
+    border: 1px solid var(--border);
+    box-shadow: var(--panel-shadow);
+  }
+
+  .stage-navigation {
+    gap: 0;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .stage-tab {
+    gap: 5px;
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 10px;
+  }
+}
+
 /* ============ SCHEMATIC CANVAS ============ */
 .sch-grid-dot {
   fill: var(--sch-grid);

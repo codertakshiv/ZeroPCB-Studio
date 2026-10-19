@@ -5,7 +5,8 @@
 import { Coordinate, coordToLabel } from '../board/types';
 import { PlacedComponent } from '../footprints/types';
 import { Net } from '../circuit/types';
-import { Route, RouteSegment } from '../routing/types';
+import { Route } from '../routing/types';
+import { extractJumperRuns } from '../routing/metrics';
 
 export type AssemblyStepType = 
   | 'place-component'
@@ -152,7 +153,10 @@ export function generateAssemblyGuide(
     const net = nets.find(n => n.id === route.netId);
     
     // Group contiguous segments into individual jumpers
-    const jumpers = splitRouteIntoJumpers(route);
+    const jumpers = extractJumperRuns(route).map(run => ({
+      ...run,
+      length: Math.round(run.lengthHoles * 2.54),
+    }));
     
     for (const jumper of jumpers) {
       steps.push({
@@ -261,61 +265,6 @@ export function generateAssemblyGuide(
     estimatedTotalTimeSeconds: steps.reduce((sum, s) => sum + (s.estimatedTimeSeconds || 0), 0),
     groupedSteps,
   };
-}
-
-function splitRouteIntoJumpers(route: Route): { id: string; from: Coordinate; to: Coordinate; length: number; layer: 'solder' | 'component' }[] {
-  const jumpers: { id: string; from: Coordinate; to: Coordinate; length: number; layer: 'solder' | 'component' }[] = [];
-  
-  if (route.segments.length === 0) return jumpers;
-  
-  let currentJumper: { from: Coordinate; to: Coordinate; segments: RouteSegment[] } | null = null;
-  
-  for (const segment of route.segments) {
-    if (!currentJumper) {
-      currentJumper = { from: segment.from, to: segment.to, segments: [segment] };
-    } else if (
-      segment.from.row === currentJumper.to.row && 
-      segment.from.col === currentJumper.to.col &&
-      segment.layer === currentJumper.segments[0].layer
-    ) {
-      // Continue current jumper
-      currentJumper.to = segment.to;
-      currentJumper.segments.push(segment);
-    } else {
-      // Finish current jumper, start new one
-      const length = calculateJumperLength(currentJumper.segments);
-      jumpers.push({
-        id: crypto.randomUUID(),
-        from: currentJumper.from,
-        to: currentJumper.to,
-        length,
-        layer: currentJumper.segments[0].layer === 'solder' ? 'solder' : 'component',
-      });
-      currentJumper = { from: segment.from, to: segment.to, segments: [segment] };
-    }
-  }
-  
-  if (currentJumper) {
-    const length = calculateJumperLength(currentJumper.segments);
-    jumpers.push({
-      id: crypto.randomUUID(),
-      from: currentJumper.from,
-      to: currentJumper.to,
-      length,
-      layer: currentJumper.segments[0].layer === 'solder' ? 'solder' : 'component',
-    });
-  }
-  
-  return jumpers;
-}
-
-function calculateJumperLength(segments: RouteSegment[]): number {
-  let length = 0;
-  for (const segment of segments) {
-    length += Math.abs(segment.from.row - segment.to.row) + Math.abs(segment.from.col - segment.to.col);
-  }
-  // Convert to mm (assuming 2.54mm pitch)
-  return Math.round(length * 2.54);
 }
 
 function orientationToString(orientation: number): string {

@@ -68,6 +68,21 @@ export interface PlacementResult {
   unplacedComponents: PlacementSpec[];
 }
 
+/** Measured route quality for an approved/rejected placement preview. */
+export interface PlacementRouteMetrics {
+  unroutedNets: number;
+  jumpers: number;
+  jumperLengthMm: number;
+  bends: number;
+  crossings: number;
+}
+
+export interface PlacementProposal {
+  placement: PlacementResult;
+  currentRouting: PlacementRouteMetrics;
+  proposedRouting: PlacementRouteMetrics;
+}
+
 export interface PlacementError {
   code: string;
   message: string;
