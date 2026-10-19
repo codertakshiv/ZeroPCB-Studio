@@ -671,7 +671,8 @@ test.describe('ZeroPCB Studio', () => {
     // Toolbar toggle (not the "Mounting Holes" board-setup section)
     const holesToggle = page.locator('button[title*="hole grid"]');
     await holesToggle.click();
-    await expect.poll(paintedCircles).toBe(0);
+    await expect.poll(paintedCircles).toBeGreaterThan(0); // Permanent mounting holes stay visible
+    await expect.poll(paintedCircles).toBeLessThan(withHoles);
 
     await holesToggle.click();
     await expect.poll(paintedCircles).toBe(withHoles);

@@ -2,7 +2,7 @@
  * Component library panel - browse and add components
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useAppStore } from '../app/store';
 import { ALL_STANDARD_FOOTPRINTS, createCustomFootprint } from '../footprints/library';
 import { registerFootprint } from '../footprints/types';
@@ -56,11 +56,15 @@ export function ComponentLibraryPanel() {
   const [selectedCategory, setSelectedCategory] = useState<ComponentCategory | 'all'>('all');
   const [customPinCount, setCustomPinCount] = useState(4);
   const [customRows, setCustomRows] = useState(2);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const cancelRenameRef = useRef(false);
   
   const circuit = useAppStore(s => s.circuit);
   const addComponentToCircuit = useAppStore(s => s.addComponentToCircuit);
   const placedComponents = useAppStore(s => s.placedComponents);
   const focusComponentId = useAppStore(s => s.selectedComponentIds);
+  const updateComponentReference = useAppStore(s => s.updateComponentReference);
   
   const filteredFootprints = useMemo(() => {
     let list: Footprint[] = ALL_STANDARD_FOOTPRINTS;
@@ -221,7 +225,47 @@ export function ComponentLibraryPanel() {
                   onClick={() => useAppStore.getState().selectComponent(comp.id)}
                   style={{ cursor: 'pointer' }}
                 >
-                  <span className="font-mono font-medium">{comp.reference}</span>
+                  {renamingId === comp.id ? (
+                    <input
+                      autoFocus
+                      aria-label={`Rename ${comp.reference}`}
+                      className="w-16 min-w-0 rounded border border-app bg-app px-1 py-0.5 font-mono"
+                      value={renameValue}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onBlur={() => {
+                        if (cancelRenameRef.current) {
+                          cancelRenameRef.current = false;
+                          setRenamingId(null);
+                          return;
+                        }
+                        const reference = renameValue.trim();
+                        if (reference) updateComponentReference(comp.id, reference);
+                        setRenamingId(null);
+                      }}
+                      onKeyDown={e => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') {
+                          cancelRenameRef.current = true;
+                          e.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="font-mono font-medium hover:underline"
+                      title="Click to rename component"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setRenameValue(comp.reference);
+                        setRenamingId(comp.id);
+                      }}
+                    >
+                      {comp.reference}
+                    </button>
+                  )}
                   <span className="text-muted truncate mx-1 flex-1 text-right text-[10px]">
                     {comp.value || fp?.name || comp.footprintId}
                   </span>
@@ -231,7 +275,7 @@ export function ComponentLibraryPanel() {
                       color: 'white' 
                     }}
                   >
-                    {isPlaced ? 'placed' : 'unplaced'}
+                    {isPlaced ? 'PCB placed' : 'PCB needed'}
                   </span>
                 </div>
               );

@@ -2,7 +2,7 @@
  * Right panel - tabbed: Inspector, Placement, Routing, Validation, Assembly, Export
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../app/store';
 import { PlacementPanel } from './PlacementPanel';
 import { RoutingPanel } from './RoutingPanel';
@@ -10,7 +10,7 @@ import { ValidationPanel } from './ValidationPanel';
 import { AssemblyPanel } from './AssemblyPanel';
 import { ExportPanel } from './ExportPanel';
 import { Panel, Button, Input } from './ui';
-import { getFootprintById } from '../footprints/types';
+import { getFootprintById, Orientation } from '../footprints/types';
 import { coordToLabel } from '../board/types';
 
 type RightTab = 'inspector' | 'placement' | 'routing' | 'validation' | 'assembly' | 'export';
@@ -76,6 +76,57 @@ export function RightPanel() {
   );
 }
 
+function ComponentPositionEditor({ componentId, position, orientation, locked, placeComponent }: {
+  componentId: string;
+  position: { row: number; col: number };
+  orientation: Orientation;
+  locked: boolean;
+  placeComponent: (id: string, position: { row: number; col: number }, orientation: Orientation) => { success: boolean; error?: string };
+}) {
+  const [row, setRow] = useState(String(position.row + 1));
+  const [col, setCol] = useState(String(position.col + 1));
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setRow(String(position.row + 1));
+    setCol(String(position.col + 1));
+  }, [position.row, position.col]);
+
+  const commit = () => {
+    const rowNumber = Number.parseInt(row, 10);
+    const colNumber = Number.parseInt(col, 10);
+    if (!Number.isInteger(rowNumber) || !Number.isInteger(colNumber) || rowNumber < 1 || colNumber < 1) {
+      setRow(String(position.row + 1));
+      setCol(String(position.col + 1));
+      setError('Enter positive hole coordinates.');
+      return;
+    }
+    const result = placeComponent(componentId, { row: rowNumber - 1, col: colNumber - 1 }, orientation);
+    setError(result.success ? '' : result.error || 'That position is not available.');
+    if (!result.success) {
+      setRow(String(position.row + 1));
+      setCol(String(position.col + 1));
+    }
+  };
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-[10px] text-muted">Row
+          <input type="number" min={1} value={row} disabled={locked} onChange={e => setRow(e.target.value)} onBlur={commit}
+            className="mt-0.5 w-full rounded border border-app bg-app px-2 py-1 text-xs text-app disabled:opacity-50" />
+        </label>
+        <label className="text-[10px] text-muted">Column
+          <input type="number" min={1} value={col} disabled={locked} onChange={e => setCol(e.target.value)} onBlur={commit}
+            className="mt-0.5 w-full rounded border border-app bg-app px-2 py-1 text-xs text-app disabled:opacity-50" />
+        </label>
+      </div>
+      <div className="mt-1 text-[10px] text-muted font-mono">Grid position: {coordToLabel(position)}</div>
+      {locked && <div className="text-[10px] text-muted">Unlock to edit this position.</div>}
+      {error && <div role="status" className="text-[10px] mt-1" style={{ color: 'var(--danger)' }}>{error}</div>}
+    </div>
+  );
+}
 function InspectorPanel() {
   const selectedComponentIds = useAppStore(s => s.selectedComponentIds);
   const components = useAppStore(s => s.placedComponents);
@@ -87,6 +138,7 @@ function InspectorPanel() {
   const removeComponentFromCircuit = useAppStore(s => s.removeComponentFromCircuit);
   const updateComponentValue = useAppStore(s => s.updateComponentValue);
   const updateComponentReference = useAppStore(s => s.updateComponentReference);
+  const placeComponent = useAppStore(s => s.placeComponent);
   const selectedNetId = useAppStore(s => s.selectedNetId);
   const nets = useAppStore(s => s.circuit.nets);
   
@@ -191,11 +243,7 @@ function InspectorPanel() {
                 />
               </div>
               
-              <div className="text-[10px] text-muted font-mono">
-                Position: {coordToLabel(comp.position)}
-                {' → '}
-                {coordToLabel({ row: comp.boundingBox.maxRow, col: comp.boundingBox.maxCol })}
-              </div>
+              <ComponentPositionEditor componentId={comp.id} position={comp.position} orientation={comp.orientation} locked={comp.locked} placeComponent={placeComponent} />
               
               <div className="flex flex-wrap gap-1">
                 <Button size="sm" onClick={() => rotateComponent(comp.id, 'ccw')} title="Rotate counter-clockwise">↺</Button>

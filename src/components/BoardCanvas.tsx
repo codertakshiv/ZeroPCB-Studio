@@ -381,14 +381,25 @@ export function BoardCanvas({
         <StripboardTracks config={config} side={side} board={board} rulerSize={rulerSize} palette={palette} />
       )}
       
-      {/* Holes and pads (view option) */}
-      {showHoles && (
-        <HolesLayer
+      {/* Holes and pads (view option). Mounting holes are drilled through the
+          board, so they stay visible even when the pad grid is hidden. */}
+      <HolesLayer
+        board={board}
+        side={side}
+        toPixel={toPixel}
+        highlightedCoordinates={highlightedCoordinates}
+        palette={palette}
+        showPads={showHoles}
+      />
+
+      {/* Click targets for each hole. Drawn BEFORE the components and wires on
+          purpose: a hole under a part must not steal the part's click (that
+          made selecting a component - and deleting it with Del - impossible). */}
+      {interactive && (
+        <HoleClickTargets
           board={board}
-          side={side}
           toPixel={toPixel}
-          highlightedCoordinates={highlightedCoordinates}
-          palette={palette}
+          onHoleClick={onHoleClick}
         />
       )}
       
@@ -439,15 +450,6 @@ export function BoardCanvas({
           strokeDasharray="4 3"
         />
       )}
-      
-      {/* Click targets for each hole (large invisible circles) */}
-      {interactive && (
-        <HoleClickTargets
-          board={board}
-          toPixel={toPixel}
-          onHoleClick={onHoleClick}
-        />
-      )}
     </svg>
   );
 }
@@ -460,9 +462,11 @@ interface HolesLayerProps {
   toPixel: (coord: Coordinate) => { x: number; y: number };
   highlightedCoordinates: Set<string>;
   palette: PcbPalette;
+  /** View option: hide the pad grid. Mounting holes are always drawn. */
+  showPads?: boolean;
 }
 
-function HolesLayer({ board, side, toPixel, highlightedCoordinates, palette }: HolesLayerProps) {
+function HolesLayer({ board, side, toPixel, highlightedCoordinates, palette, showPads = true }: HolesLayerProps) {
   // Realistic through-hole geometry at 2.54mm pitch: ~1.8mm plated pad,
   // ~1.0mm drill, so pads never touch and the mask stays visible between them.
   const holeRadius = 0.5 * PX_PER_MM;   // 1.0mm drill
@@ -496,6 +500,7 @@ function HolesLayer({ board, side, toPixel, highlightedCoordinates, palette }: H
       );
       continue;
     }
+    if (!showPads) continue;
     
     if (side === 'component') {
       // Component side: plated through-hole ring + drill

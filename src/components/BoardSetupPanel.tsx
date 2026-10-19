@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { useAppStore } from '../app/store';
-import { BoardType, coordToLabel } from '../board/types';
+import { BoardType, coordToLabel, makeCornerMountingHoles } from '../board/types';
 import { BOARD_APPEARANCES, getPcbPalette, BoardAppearance, DEFAULT_BOARD_APPEARANCE } from '../board/appearance';
 import { Panel, Input, Select, Button } from './ui';
 
@@ -213,16 +213,46 @@ export function BoardSetupPanel() {
       </Panel>
       
       <Panel title="Mounting Holes" defaultOpen={false}>
-        <div className="text-xs text-muted">
-          {boardConfig.mountingHoles.length} mounting holes configured at corners.
+        <p className="text-[10px] text-muted">
+          Select which corner holes are drilled through the PCB. This setting is saved with the project.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          {[
+            { id: 'mh1', label: 'Top left', row: 0, col: 0 },
+            { id: 'mh2', label: 'Top right', row: 0, col: dimensions.cols - 1 },
+            { id: 'mh3', label: 'Bottom left', row: dimensions.rows - 1, col: 0 },
+            { id: 'mh4', label: 'Bottom right', row: dimensions.rows - 1, col: dimensions.cols - 1 },
+          ].map(corner => {
+            const hole = boardConfig.mountingHoles.find(mh => mh.id === corner.id);
+            return (
+              <label key={corner.id} className="flex items-center gap-1.5 text-[10px]">
+                <input
+                  type="checkbox"
+                  checked={Boolean(hole)}
+                  aria-label={`${corner.label} mounting hole`}
+                  onChange={e => {
+                    const holes = e.target.checked
+                      ? [...boardConfig.mountingHoles, { id: corner.id, row: corner.row, col: corner.col, diameterMm: 3 }]
+                      : boardConfig.mountingHoles.filter(mh => mh.id !== corner.id);
+                    setBoardConfig({ mountingHoles: holes });
+                  }}
+                />
+                <span>{corner.label}</span>
+                {hole && <span className="font-mono text-muted">{coordToLabel(hole)}</span>}
+              </label>
+            );
+          })}
         </div>
-        <div className="flex flex-wrap gap-1 mt-2">
-          {boardConfig.mountingHoles.map(mh => (
-            <span key={mh.id} className="text-[10px] px-1.5 py-0.5 rounded border border-app font-mono">
-              {coordToLabel(mh)}
-            </span>
-          ))}
-        </div>
+        {boardConfig.mountingHoles.length === 0 && (
+          <button
+            type="button"
+            className="mt-2 text-[10px] underline"
+            style={{ color: 'var(--accent)' }}
+            onClick={() => setBoardConfig({ mountingHoles: makeCornerMountingHoles(dimensions) })}
+          >
+            Restore the four corner holes
+          </button>
+        )}
       </Panel>
     </div>
   );

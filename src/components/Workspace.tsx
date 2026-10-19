@@ -300,7 +300,7 @@ export function Workspace() {
           <Button
             size="sm"
             onClick={() => setFocusMode(!focusMode)}
-            title={focusMode ? 'Show the side panels again' : 'Hide the side panels so the canvas fills the window'}
+            title={focusMode ? 'Exit fullscreen workspace' : 'Open a fullscreen workspace'}
           >
             {focusMode ? '⛶ Show panels' : '⛶ Expand'}
           </Button>

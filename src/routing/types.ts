@@ -51,6 +51,7 @@ export interface RoutingEdge {
 }
 
 export interface RoutingConfig {
+  preference: RoutingPreference;
   allowSolderSide: boolean;
   allowComponentSide: boolean;
   allowStripRouting: boolean;
@@ -62,7 +63,10 @@ export interface RoutingConfig {
   congestionPenalty: number;
 }
 
+export type RoutingPreference = 'minimum-jumpers' | 'minimum-wire' | 'clean' | 'balanced';
+
 export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
+  preference: 'minimum-jumpers',
   allowSolderSide: true,
   allowComponentSide: false,
   allowStripRouting: true,
@@ -92,6 +96,8 @@ export interface RoutingStats {
   totalRoutes: number;
   totalWireLength: number;
   totalBends: number;
+  jumperCount: number;
+  jumperLength: number;
   totalCrossings: number;
   routedNets: number;
   unroutedNets: number;

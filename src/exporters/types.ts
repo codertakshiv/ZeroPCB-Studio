@@ -5,7 +5,7 @@
 import { BoardState, Coordinate, Pad, coordToKey, coordToLabel } from '../board/types';
 import { PlacedComponent, registerFootprint } from '../footprints/types';
 import { Circuit, Net } from '../circuit/types';
-import { Route, RouteSegment } from '../routing/types';
+import { Route, RouteSegment, RoutingConfig } from '../routing/types';
 import { AssemblyGuide, AssemblyGroupBy, AssemblyProgress, AssemblyStep } from '../soldering/types';
 import { ValidationResult } from '../validation/types';
 
@@ -143,6 +143,8 @@ export interface ProjectFile {
   assemblyGuide?: AssemblyGuide;
   /** Soldering checklist progress (completed step ids + current step) */
   assemblyProgress?: AssemblyProgress;
+  /** User's routing preference; omitted by older project files. */
+  routingPreference?: RoutingConfig['preference'];
   /** Counter behind generated net ids - keeps new nets unique after a load */
   netIdCounter?: number;
   metadata: ProjectMetadata;

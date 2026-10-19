@@ -18,6 +18,7 @@ import type { BoardConfig, BoardState } from '../board/types';
 import type { Circuit } from '../circuit/types';
 import type { PlacedComponent } from '../footprints/types';
 import type { Route } from '../routing/types';
+import { DEFAULT_ROUTING_CONFIG, type RoutingConfig } from '../routing/types';
 import type { AssemblyGuide, AssemblyProgress } from '../soldering/types';
 import type { ValidationResult } from '../validation/types';
 import type { StoredProject } from './types';
@@ -46,6 +47,7 @@ export interface PersistedProjectState {
   validationResult: ValidationResult | null;
   assemblyGuide: AssemblyGuide | null;
   assemblyProgress: AssemblyProgress | null;
+  routingConfig: RoutingConfig;
 }
 
 /** The persisted slice of the store, by reference (UI state is left out) */
@@ -63,6 +65,7 @@ export function persistedSliceOf(state: PersistedProjectState): PersistedProject
     validationResult: state.validationResult,
     assemblyGuide: state.assemblyGuide,
     assemblyProgress: state.assemblyProgress,
+    routingConfig: state.routingConfig,
   };
 }
 
@@ -99,7 +102,8 @@ export function samePersistedState(a: PersistedProjectState | null, b: Persisted
     a.schematicCanvasSize === b.schematicCanvasSize &&
     a.validationResult === b.validationResult &&
     a.assemblyGuide === b.assemblyGuide &&
-    a.assemblyProgress === b.assemblyProgress
+    a.assemblyProgress === b.assemblyProgress &&
+    a.routingConfig === b.routingConfig
   );
 }
 
@@ -131,6 +135,7 @@ export function buildStoredProject(
   project.assemblyProgress = state.assemblyProgress
     ? { ...state.assemblyProgress, completedStepIds: new Set(state.assemblyProgress.completedStepIds) }
     : undefined;
+  project.routingPreference = state.routingConfig.preference;
 
   return { ...project, id: options.id ?? LOCAL_PROJECT_ID };
 }
@@ -149,6 +154,7 @@ export function storedToLoadPayload(stored: ProjectFile): {
   validationResult: ProjectFile['validation'] | null;
   assemblyGuide: ProjectFile['assemblyGuide'] | null;
   assemblyProgress: AssemblyProgress | null;
+  routingConfig: RoutingConfig;
 } {
   return {
     board: stored.board,
@@ -165,6 +171,7 @@ export function storedToLoadPayload(stored: ProjectFile): {
     assemblyProgress: stored.assemblyProgress
       ? { ...stored.assemblyProgress, completedStepIds: new Set(stored.assemblyProgress.completedStepIds) }
       : null,
+    routingConfig: { ...DEFAULT_ROUTING_CONFIG, preference: stored.routingPreference ?? DEFAULT_ROUTING_CONFIG.preference },
   };
 }
 

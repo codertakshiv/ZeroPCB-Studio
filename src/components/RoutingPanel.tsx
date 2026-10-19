@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { useAppStore } from '../app/store';
-import { Panel, Button, Badge } from './ui';
+import { Panel, Button, Badge, Select } from './ui';
 
 export function RoutingPanel() {
   const routingConfig = useAppStore(s => s.routingConfig);
@@ -26,6 +26,17 @@ export function RoutingPanel() {
     <div className="flex flex-col gap-3">
       <Panel title="Auto-Routing">
         <div className="flex flex-col gap-2">
+          <Select
+            label="Routing preference"
+            value={routingConfig.preference}
+            onChange={value => setRoutingConfig({ preference: value as typeof routingConfig.preference })}
+            options={[
+              { value: 'minimum-jumpers', label: 'Minimum jumpers' },
+              { value: 'minimum-wire', label: 'Minimum wire length' },
+              { value: 'clean', label: 'Clean routing' },
+              { value: 'balanced', label: 'Balanced' },
+            ]}
+          />
           <label className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
@@ -82,6 +93,10 @@ export function RoutingPanel() {
             <div className="flex justify-between">
               <span className="text-muted">Total wire</span>
               <span>{(routingResult.stats.totalWireLength * boardConfig.dimensions.holePitchMm).toFixed(0)}mm</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Jumpers</span>
+              <span>{routingResult.stats.jumperCount} · {(routingResult.stats.jumperLength * boardConfig.dimensions.holePitchMm).toFixed(0)}mm</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted">Total bends</span>

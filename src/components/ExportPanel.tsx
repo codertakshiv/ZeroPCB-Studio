@@ -101,6 +101,7 @@ export function ExportPanel() {
     project.assemblyGuide = assemblyGuide || undefined;
     project.schematicPositions = useAppStore.getState().schematicPositions;
     project.schematicCanvasSize = useAppStore.getState().schematicCanvasSize;
+    project.routingPreference = useAppStore.getState().routingConfig.preference;
     
     downloadTextFile(serializeProject(project), `${baseName}.json`, 'application/json');
     markSaved();

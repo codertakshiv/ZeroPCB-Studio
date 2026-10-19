@@ -388,8 +388,15 @@ export const useAppStore = create<AppState>((set, get) => {
       // re-anchoring them leaves holes pointing at coordinates that no longer
       // exist (drills, pad flags and strip gaps all go out of sync).
       if (gridChanged) {
-        if (newConfig.mountingHoles.length === 0 || isCornerMountingHoles(newConfig.mountingHoles, oldDims)) {
-          newConfig.mountingHoles = makeCornerMountingHoles(dims);
+        // Keep mounting holes disabled when the user has removed all of them.
+        // If the prior setup used corner holes, move the selected corner holes
+        // along with a resized grid.
+        if (oldConfig.mountingHoles.length > 0 && isCornerMountingHoles(oldConfig.mountingHoles, oldDims)) {
+          newConfig.mountingHoles = oldConfig.mountingHoles.map(hole => ({
+            ...hole,
+            row: hole.row === oldDims.rows - 1 ? dims.rows - 1 : 0,
+            col: hole.col === oldDims.cols - 1 ? dims.cols - 1 : 0,
+          }));
         } else {
           newConfig.mountingHoles = newConfig.mountingHoles.filter(
             mh => mh.row >= 0 && mh.row < dims.rows && mh.col >= 0 && mh.col < dims.cols
@@ -898,6 +905,15 @@ export const useAppStore = create<AppState>((set, get) => {
       
       const footprint = getFootprintById(circuitComponent.footprintId);
       if (!footprint) return { success: false, error: 'Footprint not found' };
+
+      const currentPlacement = state.placedComponents.find(c => c.id === componentId);
+      if (currentPlacement?.locked && (
+        currentPlacement.position.row !== position.row ||
+        currentPlacement.position.col !== position.col ||
+        currentPlacement.orientation !== orientation
+      )) {
+        return { success: false, error: `${currentPlacement.reference} is locked. Unlock it before moving or rotating.` };
+      }
       
       const pinPositions = getRotatedPinPositions(footprint, position, orientation);
       const boundingBox = getComponentBoundingBox(position, orientation, footprint);
@@ -924,6 +940,12 @@ export const useAppStore = create<AppState>((set, get) => {
         // Check against other components
         for (const other of state.placedComponents) {
           if (other.id === componentId) continue;
+          const overlapsFootprint =
+            boundingBox.minRow <= other.boundingBox.maxRow && boundingBox.maxRow >= other.boundingBox.minRow &&
+            boundingBox.minCol <= other.boundingBox.maxCol && boundingBox.maxCol >= other.boundingBox.minCol;
+          if (overlapsFootprint) {
+            conflicts.push(`Footprint overlaps ${other.reference}`);
+          }
           for (const otherCoord of other.pinPositions.values()) {
             if (coord.row === otherCoord.row && coord.col === otherCoord.col) {
               conflicts.push(`Hole ${coordToLabel(coord)} is used by ${other.reference}`);
@@ -945,7 +967,7 @@ export const useAppStore = create<AppState>((set, get) => {
         value: circuitComponent.value,
         position,
         orientation,
-        locked: false,
+        locked: currentPlacement?.locked ?? false,
         nets: new Map(circuitComponent.pins),
         footprint,
         pinPositions,
@@ -958,6 +980,12 @@ export const useAppStore = create<AppState>((set, get) => {
       
       set({
         placedComponents: newPlaced,
+        routes: [],
+        lockedRouteIds: new Set<string>(),
+        routingResult: null,
+        validationResult: null,
+        assemblyGuide: null,
+        assemblyProgress: null,
         isDirty: true,
       });
       
@@ -970,6 +998,16 @@ export const useAppStore = create<AppState>((set, get) => {
       
       set({
         placedComponents: state.placedComponents.filter(c => c.id !== componentId),
+        // The part is gone - it must not stay selected (the Inspect panel would
+        // keep showing it, and Del would keep targeting a missing component).
+        selectedComponentIds: new Set([...state.selectedComponentIds].filter(id => id !== componentId)),
+        highlightedCoordinates: new Set(),
+        routes: [],
+        lockedRouteIds: new Set<string>(),
+        routingResult: null,
+        validationResult: null,
+        assemblyGuide: null,
+        assemblyProgress: null,
         isDirty: true,
       });
     },
@@ -991,48 +1029,15 @@ export const useAppStore = create<AppState>((set, get) => {
       
       const newOrientation = orientations[newIdx];
       
-      // Try rotating in place
-      const result = state.placeComponent(componentId, comp.position, newOrientation);
-      
-      if (!result.success) {
-        // Try to find nearby valid position
-        const offsets = [
-          { dr: 0, dc: 1 }, { dr: 0, dc: -1 },
-          { dr: 1, dc: 0 }, { dr: -1, dc: 0 },
-          { dr: 1, dc: 1 }, { dr: -1, dc: -1 },
-        ];
-        
-        for (const offset of offsets) {
-          const newPos = {
-            row: comp.position.row + offset.dr,
-            col: comp.position.col + offset.dc,
-          };
-          const retryResult = state.placeComponent(componentId, newPos, newOrientation);
-          if (retryResult.success) {
-            // Preserve lock state
-            if (comp.locked) {
-              set(state2 => ({
-                placedComponents: state2.placedComponents.map(c =>
-                  c.id === componentId ? { ...c, locked: true } : c
-                ),
-              }));
-            }
-            return;
-          }
-        }
-      } else {
-        // Preserve lock state
-        if (comp.locked) {
-          set(s => ({
-            placedComponents: s.placedComponents.map(c =>
-              c.id === componentId ? { ...c, locked: true } : c
-            ),
-          }));
-        }
-      }
+      // Rotation stays on the current grid origin. If the new orientation
+      // collides, keep the current placement and let the inspector explain why.
+      state.placeComponent(componentId, comp.position, newOrientation);
     },
     
     lockComponent: (componentId, locked) => {
+      const current = get().placedComponents.find(c => c.id === componentId);
+      if (!current || current.locked === locked) return;
+      get().pushHistory();
       set(state => ({
         placedComponents: state.placedComponents.map(c =>
           c.id === componentId ? { ...c, locked } : c
@@ -1218,6 +1223,7 @@ export const useAppStore = create<AppState>((set, get) => {
     setRoutingConfig: (config) => {
       set(state => ({
         routingConfig: { ...state.routingConfig, ...config },
+        isDirty: true,
       }));
     },
     
@@ -1530,6 +1536,10 @@ export const useAppStore = create<AppState>((set, get) => {
           circuit: data.circuit || state.circuit,
           placedComponents: data.placedComponents || [],
           routes: data.routes || [],
+          routingConfig: {
+            ...state.routingConfig,
+            ...(data.routingConfig || {}),
+          },
           netIdCounter: data.netIdCounter || 1,
           projectMetadata: data.projectMetadata || state.projectMetadata,
           schematicPositions: data.schematicPositions || new Map<string, SchematicPosition>(),

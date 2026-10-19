@@ -1,4 +1,4 @@
-# ZeroPCB Studio
+# 🔧 ZeroPCB Studio
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-vitest%20%2B%20playwright-3b82f6.svg)](#development)
@@ -29,17 +29,17 @@ modify and share — keep the credit, see [License](#license)).
 
 ---
 
-## Features
+## ✨ Features
 
 | Area | What it does |
 | --- | --- |
 | **Board setup** | Perfboard / stripboard / custom dimensions in holes (2.54 mm pitch), mounting holes, strip direction, per-hole track cuts. |
 | **Circuit input** | Manual component + pin editor, documented circuit JSON import, and best-effort KiCad netlist (`.net`) import. |
 | **Schematic editor** | Interactive EasyEDA-style schematic: drag symbols, marquee-select and move several at once, wheel/pinch zoom, pan, and click pin → pin to wire. Wires show a filled dot where they end on a pin and a bigger dot where several wires join — a plain crossing is never a connection. Nets are routed around symbol bodies and pins so nothing is ambiguous. |
-| **Placement** | Real optimizer: greedy seeding + local search/annealing with three modes (min wire length, max neatness, balanced) and Fast / Standard / Thorough intensity. Deterministic per seed. Locked components stay put. |
+| **Placement** | Drag parts onto the PCB, edit grid coordinates, rotate, and lock components in place. Auto-arrange is optional and supports three modes (min wire length, max neatness, balanced) with Fast / Standard / Thorough intensity. |
 | **Routing** | A\* over the hole graph, obstacle- and net-aware. Isolated-pad (perfboard) and stripboard semantics (strips as edges; cuts and mounting holes sever runs). Crossing wires are never treated as junctions. |
 | **Validation** | Connectivity graph, unconnected pins, short circuits (including stripboard runs carrying multiple nets), routing continuity. Visual appearance is never used as proof. |
-| **Views** | Component side, solder side (true left-right mirror), and side-by-side. Wheel zoom anchored at the cursor, drag to pan, five schematic canvas sizes. Rulers with spreadsheet-style labels (`A1`…`Z30`, multi-letter rows); the pad grid can be hidden for a cleaner look at tracks and components (view only — exports always keep the holes). |
+| **Views** | Component side, solder side (true left-right mirror), and side-by-side. Wheel zoom anchored at the cursor, drag to pan, fullscreen schematic editing, and a compact in-canvas help button. Rulers with spreadsheet-style labels (`A1`…`Z30`, multi-letter rows); the pad grid can be hidden for a cleaner look at tracks and components (view only — exports always keep the holes). |
 | **Assembly guide** | Dynamically generated steps from the actual layout — place/solder steps per component with real pad coordinates, jumper cutting list, track-cut steps, verification steps, progress tracking. |
 | **Exports** | Project JSON (round-trip safe), SVG top/solder, PNG top/solder, printable PDF guide + checklist (via browser print), BOM / netlist / pad list / jumper list / track-cut list CSVs. |
 | **Storage** | Autosaves the whole project to this browser's IndexedDB on every change (short debounce) and restores it after a refresh or a new visit — no account, no cloud, no backend. A live indicator shows *Saving… / Saved HH:MM / Save failed*. Manual Save + Load buttons and Project JSON export/import stay available as backups. |

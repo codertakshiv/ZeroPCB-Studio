@@ -57,6 +57,7 @@ export function SchematicCanvas() {
   const [menu, setMenu] = useState<{ x: number; y: number; componentId: string; pinId: string } | null>(null);
   const [band, setBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [panning, setPanning] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   // Symbol drag: one undo entry per drag, no matter how many symbols move
   const dragRef = useRef<{
     startX: number;
@@ -519,33 +520,38 @@ export function SchematicCanvas() {
 
   return (
     <div className="relative w-full h-full select-none">
-      {/* Hint bar */}
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px]"
-        style={{ backgroundColor: 'var(--panel-bg)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-        {pending ? (
-          <>
-            <span className="font-semibold" style={{ color: 'var(--accent)' }}>Wiring:</span>
-            <span>click another pin to connect</span>
-            <span className="opacity-60">·</span>
-            <span>Esc to cancel</span>
-          </>
-        ) : (
-          <>
-            <span>Click <span className="font-semibold" style={{ color: 'var(--accent)' }}>pin → pin</span> to wire</span>
-            <span className="opacity-60">·</span>
-            <span>drag to move</span>
-            <span className="opacity-60">·</span>
-            <span>drag empty space to select several</span>
-            <span className="opacity-60">·</span>
-            <span>middle-drag to pan</span>
-            <span className="opacity-60">·</span>
-            <span>scroll to zoom</span>
-            <span className="opacity-60">·</span>
-            <span>right-click a pin for options</span>
-          </>
+      <div className="absolute top-3 right-3 z-20">
+        <button
+          type="button"
+          className="w-6 h-6 rounded-full border text-xs font-semibold shadow-sm"
+          style={{ backgroundColor: 'var(--panel-bg)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          aria-label="Schematic help"
+          aria-expanded={helpOpen}
+          title="How to make a circuit schematic"
+          onClick={() => setHelpOpen(open => !open)}
+        >
+          ?
+        </button>
+        {helpOpen && (
+          <div className="absolute right-0 top-8 w-64 rounded-xl border p-3 shadow-xl text-xs leading-relaxed"
+            style={{ backgroundColor: 'var(--panel-bg)', borderColor: 'var(--border)', color: 'var(--text)' }}>
+            <div className="font-semibold mb-1">Make a circuit schematic</div>
+            <ol className="list-decimal pl-4 text-muted space-y-1">
+              <li>Add parts from the Library panel.</li>
+              <li>Click one pin, then another pin to connect them.</li>
+              <li>Drag parts to arrange them; drag empty space to select several.</li>
+              <li>Right-click a pin for connection options. Press Esc to cancel wiring.</li>
+            </ol>
+            <div className="mt-2 text-[10px] text-muted">Use the toolbar to zoom or expand the canvas.</div>
+          </div>
         )}
       </div>
-
+      {pending && (
+        <div className="absolute top-3 left-3 z-10 rounded-full border px-2.5 py-1 text-[10px]"
+          style={{ backgroundColor: 'var(--panel-bg)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+          Select another pin · Esc to cancel
+        </div>
+      )}
       <div
         ref={scrollRef}
         className="w-full h-full overflow-auto p-6"

@@ -211,7 +211,7 @@ export function findPath(
   const startState: AStarState = {
     key: startKey,
     g: 0,
-    f: heuristic(startCoord, targetCoords),
+    f: routingHeuristic(startCoord, targetCoords, config),
     parent: null,
     edge: null,
   };
@@ -259,12 +259,15 @@ export function findPath(
       if (neighborNet && neighborNet !== netId) continue;
       
       // Calculate cost
-      let cost = edge.cost * config.lengthWeight;
+      const preferenceBase = config.preference === 'minimum-jumpers'
+        ? (edge.type === 'strip' ? 0.001 : 100)
+        : edge.cost * config.lengthWeight;
+      let cost = preferenceBase;
       
       // Bend penalty: if direction changes from parent edge
       const parentEdge = currentState.edge;
       if (parentEdge && isDirectionChange(parentEdge, edge)) {
-        cost += config.bendPenalty;
+        cost += config.preference === 'clean' ? Math.max(config.bendPenalty, 8) : config.bendPenalty;
       }
       
       // Congestion penalty
@@ -283,7 +286,7 @@ export function findPath(
         gScores.set(edge.to, tentativeG);
         
         const neighborCoord = { row: neighborNode.coordinate.row, col: neighborNode.coordinate.col };
-        const h = heuristic(neighborCoord, targetCoords);
+        const h = routingHeuristic(neighborCoord, targetCoords, config);
         
         const newState: AStarState = {
           key: edge.to,
@@ -321,6 +324,13 @@ export function findPath(
   }
   
   return segments;
+}
+
+function routingHeuristic(coord: Coordinate, targets: Coordinate[], config: RoutingConfig): number {
+  if (config.preference === 'minimum-jumpers') return 0;
+  // Strip edges cost less than a jumper edge, so scale the Manhattan bound by
+  // the cheapest possible edge to keep A*'s heuristic admissible.
+  return heuristic(coord, targets) * 0.4 * config.lengthWeight;
 }
 
 function isDirectionChange(prev: RoutingEdge, next: RoutingEdge): boolean {
@@ -405,7 +415,10 @@ export function routeNet(context: RoutingContext, net: Net): Route | null {
       for (const treeCoord of treeCoords) {
         const segments = findPath(context, net.id, treeCoord, [target]);
         if (segments) {
-          const cost = segments.length + segments.filter(s => s.type === 'wire').length * 0.5;
+          const wireCount = segments.filter(s => s.type === 'wire').length;
+          const cost = context.config.preference === 'minimum-jumpers'
+            ? wireCount * 100 + segments.length * 0.001
+            : segments.length + wireCount * 0.5 + (context.config.preference === 'clean' ? countBends(segments) * 8 : 0);
           
           // Also check if strip connectivity handles this for free
           if (cost < (best?.cost ?? Infinity) || !best) {
@@ -581,6 +594,11 @@ export function routeAllNets(context: RoutingContext): RoutingResult {
     totalRoutes: routes.length,
     totalWireLength: routes.reduce((sum, r) => sum + r.length, 0),
     totalBends: routes.reduce((sum, r) => sum + r.bendCount, 0),
+    // The routing graph models each adjacent-pad wire edge as one jumper link.
+    jumperCount: routes.reduce((sum, route) => sum + route.segments.filter(segment => segment.type === 'wire').length, 0),
+    jumperLength: routes.reduce((sum, route) => sum + route.segments
+      .filter(segment => segment.type === 'wire')
+      .reduce((length, segment) => length + Math.abs(segment.from.row - segment.to.row) + Math.abs(segment.from.col - segment.to.col), 0), 0),
     totalCrossings: countCrossings(routes),
     routedNets: routes.length,
     unroutedNets: unroutedNets.length,
