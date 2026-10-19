@@ -19,13 +19,13 @@ modify and share — keep the credit, see [License](#license)).
 
 ---
 
-## Screenshots
+## 📸 Screenshots
 
 | | |
 | --- | --- |
-| ![Board with placed and routed components](docs/screenshots/board-routed.png) <br> **Board view** — placed components, routed nets, spreadsheet-style rulers | ![Solder side mirror](docs/screenshots/solder-side.png) <br> **Solder side** — true physical mirror with the same coordinates |
-| ![Schematic editor](docs/screenshots/schematic.png) <br> **Schematic** — wire pin → pin; filled dot = wired, gold = free | ![Circuit panel](docs/screenshots/circuit.png) <br> **Circuit panel** — nets, pins and a readiness checklist |
-| ![Assembly guide](docs/screenshots/guide.png) <br> **Assembly guide** — step-by-step soldering instructions | ![Validation](docs/screenshots/validation.png) <br> **Validation** — connectivity and short checks |
+| ![Board with placed and routed components](docs/screenshots/board-routed.png) <br> **🖥️ Board view** — placed components, routed nets, spreadsheet-style rulers | ![Solder side mirror](docs/screenshots/solder-side.png) <br> **🔄 Solder side** — true physical mirror with the same coordinates |
+| ![Schematic editor](docs/screenshots/schematic.png) <br> **⚡ Schematic** — wire pin → pin; filled dot = wired, gold = free | ![Circuit panel](docs/screenshots/circuit.png) <br> **📋 Circuit panel** — nets, pins and a readiness checklist |
+| ![Assembly guide](docs/screenshots/guide.png) <br> **📖 Assembly guide** — step-by-step soldering instructions | ![Validation](docs/screenshots/validation.png) <br> **✅ Validation** — connectivity and short checks |
 
 ---
 
@@ -45,7 +45,7 @@ modify and share — keep the credit, see [License](#license)).
 | **Storage** | Autosaves the whole project to this browser's IndexedDB on every change (short debounce) and restores it after a refresh or a new visit — no account, no cloud, no backend. A live indicator shows *Saving… / Saved HH:MM / Save failed*. Manual Save + Load buttons and Project JSON export/import stay available as backups. |
 | **Safety** | Components can never silently overlap: placement reports exactly what was placed and why anything failed. Failed placements show errors instead of pretending success. |
 
-## Quick start
+## 🚀 Quick start
 
 ```bash
 git clone https://github.com/codertakshiv/ZeroPCB-Studio.git
@@ -62,7 +62,7 @@ Requirements: **Node.js 20.19+** (or 22.12+), npm.
 
 First-time Playwright use: `npx playwright install chromium`.
 
-## Workflow
+## 🔄 Workflow
 
 1. **Board** tab (left) — pick a preset or enter dimensions, set mounting holes.
 2. **Library** tab — add components; each gets a reference (`R1`, `D1`, …).
@@ -81,7 +81,7 @@ Your work is saved as you go: the toolbar shows *Saving… / Saved HH:MM / Save 
 or refreshing the page brings the same project back. Nothing leaves the machine except files you
 download yourself.
 
-## Supported board types
+## 📐 Supported board types
 
 | Type | Presets | Semantics |
 | --- | --- | --- |
@@ -91,7 +91,7 @@ download yourself.
 
 Hole pitch is 2.54 mm (0.1"). Board size presets and margins can be adjusted per project.
 
-## Circuit input methods
+## 🔌 Circuit input methods
 
 ### 1. Manual editor
 
@@ -142,7 +142,7 @@ footprints, imports nets and pin connections, and infers power/ground flags from
 errors and skipped — never silently substituted. Pins that don't exist on the mapped footprint are
 reported too.
 
-## Coordinate system & soldering correctness
+## 🧭 Coordinate system & soldering correctness
 
 - Holes are addressed spreadsheet-style: rows `A`…`Z`, `AA`…; columns `1…N` (1-based).
 - Components are always stored in **component-side (top view)** coordinates.
@@ -153,7 +153,7 @@ reported too.
 - Crossings are **not** junctions: two wires crossing on the board never connect unless the
   connectivity graph says so (a shared pad/strip or an explicit connection).
 
-## Exports
+## 📦 Exports
 
 | Export | Notes |
 | --- | --- |
@@ -167,7 +167,7 @@ reported too.
 | **Jumpers CSV** | Wire cutting list: from/to coordinates, length in mm (holes × 2.54), plus cut allowance. |
 | **Track cuts CSV** | Stripboard only: every cut with its coordinate and affected nets. |
 
-## Development
+## 🛠️ Development
 
 ```bash
 npm run test          # vitest: transforms, footprints, placement, routing, validation,
@@ -211,7 +211,7 @@ placement, routes, schematic positions and checklist progress survive a reload),
 export content, and instruction generation — including undersized/impossible boards and sample
 circuits with known connectivity.
 
-## Limitations & known gaps (honest list)
+## ⚠️ Limitations & known gaps (honest list)
 
 - **Placement/routing run on the main thread.** There are async yields so the UI can repaint, but
   large boards can make the tab feel busy while optimizing. Web Workers are not implemented yet.
@@ -237,12 +237,12 @@ circuits with known connectivity.
   comes back after a refresh, but it does not sync between machines, browsers or tabs — use project
   JSON files for backup and sharing. Clearing site data deletes the saved project.
 
-## Tech stack
+## ⚙️ Tech stack
 
 React 19 + TypeScript + Vite, Tailwind CSS v4, Zustand, Vitest, Playwright, IndexedDB.
 No paid services; runs entirely client-side.
 
-## License
+## ⚖️ License
 
 **MIT** © 2026 [Takshiv Kashyap](https://github.com/codertakshiv) — free to use, modify, share and build
 on, commercially or not, **as long as the copyright notice and license text stay with it**
@@ -251,7 +251,7 @@ on, commercially or not, **as long as the copyright notice and license text stay
 Contributions, bug reports and feature ideas are welcome via
 [issues](https://github.com/codertakshiv/ZeroPCB-Studio/issues) and pull requests.
 
-## Credits
+## 👏 Credits
 
 Built by [codertakshiv](https://github.com/codertakshiv). Schematic symbols, board geometry,
 placement and A\* routing engines, exporters and the UI were written for this project — no EDA

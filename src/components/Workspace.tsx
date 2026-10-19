@@ -256,6 +256,14 @@ export function Workspace() {
             >
               {showHoles ? '◉' : '○'} Holes
             </button>
+
+            <button
+              className="px-2.5 py-1.5 text-xs rounded-lg border border-app hover-bg text-app"
+              onClick={() => setFocusMode(!focusMode)}
+              title={focusMode ? 'Exit full-screen (show side panels)' : 'Enter full-screen (hide side panels)'}
+            >
+              {focusMode ? '⛶' : '⛶'}
+            </button>
           </>
         ) : (
           <>

@@ -49,6 +49,8 @@ export function SchematicCanvas() {
   const selectNet = useAppStore(s => s.selectNet);
   const clearHighlights = useAppStore(s => s.clearHighlights);
   const pushHistory = useAppStore(s => s.pushHistory);
+  const focusMode = useAppStore(s => s.focusMode);
+  const setFocusMode = useAppStore(s => s.setFocusMode);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -520,7 +522,17 @@ export function SchematicCanvas() {
 
   return (
     <div className="relative w-full h-full select-none">
-      <div className="absolute top-3 right-3 z-20">
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-1">
+        <button
+          type="button"
+          className="w-6 h-6 rounded-full border text-xs font-semibold shadow-sm"
+          style={{ backgroundColor: 'var(--panel-bg)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          aria-label="Toggle full-screen"
+          onClick={() => setFocusMode(!focusMode)}
+          title={focusMode ? 'Exit full-screen' : 'Enter full-screen (hides side panels)'}
+        >
+          {focusMode ? '⛶' : '⛶'}
+        </button>
         <button
           type="button"
           className="w-6 h-6 rounded-full border text-xs font-semibold shadow-sm"
