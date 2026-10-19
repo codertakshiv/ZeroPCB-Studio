@@ -123,7 +123,7 @@ export function BoardSetupPanel() {
         )}
       </Panel>
       
-      <Panel title="Board Finish">
+      <Panel title="Board Finish" defaultOpen={false}>
         <div className="flex flex-wrap gap-2">
           {BOARD_APPEARANCES.map(appearance => {
             const palette = getPcbPalette(appearance);
@@ -163,9 +163,6 @@ export function BoardSetupPanel() {
             );
           })}
         </div>
-        <p className="text-[10px] text-muted mt-2">
-          Soldermask color — exported SVG/PNG and the assembly guide use the same finish.
-        </p>
       </Panel>
       
       <Panel title="Dimensions">

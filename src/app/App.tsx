@@ -3,7 +3,6 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { BookOpen, CircuitBoard, Download, FolderKanban, Move, Route as RouteIcon, ShieldCheck } from 'lucide-react';
 import { useAppStore } from './store';
 import { useProjectPersistence } from './useProjectPersistence';
 import { LeftPanel } from '../components/LeftPanel';
@@ -12,17 +11,7 @@ import { Workspace } from '../components/Workspace';
 import { TopToolbar } from '../components/TopToolbar';
 import { registerAllStandardFootprints } from '../footprints/library';
 import type { WorkspaceStage } from './stages';
-import { coordToLabel } from '../board/types';
 
-const STAGES: { id: WorkspaceStage; label: string; fullName: string; icon: React.ComponentType<{ size?: number }> }[] = [
-  { id: 'project', label: 'Project', fullName: 'Project and board setup', icon: FolderKanban },
-  { id: 'circuit', label: 'Circuit', fullName: 'Circuit and connectivity', icon: CircuitBoard },
-  { id: 'placement', label: 'Place', fullName: 'Component placement', icon: Move },
-  { id: 'routing', label: 'Route', fullName: 'Board routing', icon: RouteIcon },
-  { id: 'validation', label: 'Check', fullName: 'Electrical validation', icon: ShieldCheck },
-  { id: 'assembly', label: 'Build', fullName: 'Assembly guide', icon: BookOpen },
-  { id: 'export', label: 'Export', fullName: 'Export project and files', icon: Download },
-];
 
 // Register all standard footprints once at app start
 registerAllStandardFootprints();
@@ -31,13 +20,19 @@ export function App() {
   const theme = useAppStore(s => s.theme);
   const focusMode = useAppStore(s => s.focusMode);
   const setWorkspaceView = useAppStore(s => s.setWorkspaceView);
-  const [activeStage, setActiveStage] = useState<WorkspaceStage>('project');
+  const [activeStage, setActiveStage] = useState<WorkspaceStage>('placement');
   const [mobilePanel, setMobilePanel] = useState<'inputs' | 'tools' | null>(null);
   const selectStage = (stage: WorkspaceStage) => {
     setActiveStage(stage);
     setWorkspaceView(stage === 'circuit' ? 'schematic' : 'board');
     setMobilePanel(null);
   };
+  const runPlacement = useAppStore(s => s.runPlacement);
+  const runRouting = useAppStore(s => s.runRouting);
+  const validate = useAppStore(s => s.validate);
+  const placeAll = () => { setActiveStage('placement'); setWorkspaceView('board'); void runPlacement(); };
+  const routeAll = () => { setActiveStage('routing'); setWorkspaceView('board'); void runRouting(); };
+  const checkBoard = () => { setActiveStage('validation'); setWorkspaceView('board'); validate(); };
   
   // Restore the last local project on boot and autosave every change
   useProjectPersistence();
@@ -108,6 +103,7 @@ export function App() {
       // Escape: clear selection
       if (e.key === 'Escape') {
         state.clearHighlights();
+        setMobilePanel(null);
         return;
       }
       
@@ -147,38 +143,15 @@ export function App() {
   
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-app text-app">
-      <TopToolbar />
+      <TopToolbar onRunPlacement={placeAll} onRunRouting={routeAll} onCheck={checkBoard} onOpenStage={selectStage}
+        onToggleInputs={() => setMobilePanel(current => current === 'inputs' ? null : 'inputs')}
+        onToggleInspector={() => setMobilePanel(current => current === 'tools' ? null : 'tools')} />
 
-      {!focusMode && (
-        <nav aria-label="Design workflow" className="stage-navigation flex items-center gap-1 px-3 py-1.5 border-b border-app bg-panel overflow-x-auto">
-          {STAGES.map(stage => {
-            const Icon = stage.icon;
-            const active = activeStage === stage.id;
-            return (
-              <button
-                key={stage.id}
-                type="button"
-                aria-current={active ? 'step' : undefined}
-                title={stage.fullName}
-                onClick={() => selectStage(stage.id)}
-                className={`stage-tab flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-xs ${active ? 'stage-tab-active' : 'text-muted hover-bg'}`}
-              >
-                <Icon size={14} aria-hidden="true" />
-                <span>{stage.label}</span>
-              </button>
-            );
-          })}
-          <span className="ml-auto hidden xl:block text-[10px] text-muted whitespace-nowrap pr-2">
-            Circuit → Place → Route → Check → Build
-          </span>
-          <button type="button" className="mobile-panel-toggle" onClick={() => setMobilePanel(current => current === 'inputs' ? null : 'inputs')}>Inputs</button>
-          <button type="button" className="mobile-panel-toggle" onClick={() => setMobilePanel(current => current === 'tools' ? null : 'tools')}>Tools</button>
-        </nav>
-      )}
       
-      <div className="flex flex-1 overflow-hidden gap-0">
+      <div className="flex flex-1 overflow-hidden gap-0 relative min-h-0">
+        {mobilePanel && <button className="drawer-backdrop" aria-label="Close panel" onClick={() => setMobilePanel(null)} />}
         {/* Left sidebar (hidden in focus mode) */}
-        <aside className={`app-sidebar app-sidebar-left w-72 shrink-0 border-r border-app bg-panel overflow-hidden flex-col ${focusMode ? 'hidden' : 'hidden md:flex'} ${mobilePanel === 'inputs' ? 'mobile-visible' : ''}`}>
+        <aside className={`app-sidebar app-sidebar-left w-64 shrink-0 border-r border-app bg-panel overflow-hidden flex-col ${focusMode ? 'hidden' : 'hidden xl:flex'} ${mobilePanel === 'inputs' ? 'mobile-visible' : ''}`}>
           <LeftPanel activeStage={activeStage} onStageChange={selectStage} />
         </aside>
         
@@ -188,7 +161,7 @@ export function App() {
         </main>
         
         {/* Right sidebar (hidden in focus mode) */}
-        <aside className={`app-sidebar app-sidebar-right w-80 shrink-0 border-l border-app bg-panel overflow-hidden flex-col ${focusMode ? 'hidden' : 'hidden lg:flex'} ${mobilePanel === 'tools' ? 'mobile-visible' : ''}`}>
+        <aside className={`app-sidebar app-sidebar-right w-72 shrink-0 border-l border-app bg-panel overflow-hidden flex-col ${focusMode ? 'hidden' : 'hidden xl:flex'} ${mobilePanel === 'tools' ? 'mobile-visible' : ''}`}>
           <RightPanel activeStage={activeStage} />
         </aside>
       </div>
@@ -203,61 +176,17 @@ function StatusBar() {
   const placedComponents = useAppStore(s => s.placedComponents);
   const circuit = useAppStore(s => s.circuit);
   const routes = useAppStore(s => s.routes);
-  const isOptimizing = useAppStore(s => s.isOptimizing);
-  const optimizationStatus = useAppStore(s => s.optimizationStatus);
-  const validationResult = useAppStore(s => s.validationResult);
   const routingResult = useAppStore(s => s.routingResult);
-  const placementProposal = useAppStore(s => s.placementProposal);
-  const selectedComponentIds = useAppStore(s => s.selectedComponentIds);
-  const selected = placedComponents.filter(component => selectedComponentIds.has(component.id));
-  
+  const placementResult = useAppStore(s => s.placementResult);
+
   return (
-    <footer className="flex items-center gap-3 px-4 py-1.5 border-t border-app bg-panel text-[10px] text-muted font-mono">
-      <span>{boardConfig.name}</span>
-      <span className="opacity-40">|</span>
-      <span>
-        {boardConfig.dimensions.rows}×{boardConfig.dimensions.cols} @ {boardConfig.dimensions.holePitchMm}mm
-      </span>
-      <span className="opacity-40">|</span>
+    <footer className="flex items-center gap-3 px-3 py-1 border-t border-app bg-panel text-[10px] text-muted font-mono overflow-x-auto whitespace-nowrap">
+      <span>{boardConfig.dimensions.rows}×{boardConfig.dimensions.cols} @ {boardConfig.dimensions.holePitchMm}mm</span>
       <span>{placedComponents.length}/{circuit.components.length} placed</span>
-      <span className="opacity-40">|</span>
-      <span>{circuit.nets.length} nets · {routes.length} routes</span>
-      
-      {selected.length === 1 && (
-        <>
-          <span className="opacity-40">|</span>
-          <span>{selected[0].reference} @ {coordToLabel(selected[0].position)}{selected[0].locked ? ' · locked' : ''}</span>
-        </>
-      )}
-
-      {routingResult && (
-        <>
-          <span className="opacity-40">|</span>
-          <span style={{ color: routingResult.unroutedNets.length ? 'var(--danger)' : 'var(--success)' }}>
-            {routingResult.unroutedNets.length ? `${routingResult.unroutedNets.length} unrouted` : 'Routing complete'}
-          </span>
-        </>
-      )}
-
-      {placementProposal && <span className="text-amber-500">Placement review pending</span>}
-
-      {validationResult && (
-        <>
-          <span className="opacity-40">|</span>
-          <span style={{ color: validationResult.isValid ? 'var(--success)' : 'var(--danger)' }}>
-            {validationResult.isValid ? '✓ Valid' : `✗ ${validationResult.issues.filter(i => i.severity === 'error').length} errors`}
-          </span>
-        </>
-      )}
-      
-      <span className="flex-1" />
-      
-      {(isOptimizing || optimizationStatus) && (
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'var(--accent)' }} />
-          {optimizationStatus}
-        </span>
-      )}
+      <span>{routes.length} routes</span>
+      <span style={{ color: routingResult?.unroutedNets.length ? 'var(--danger)' : undefined }}>{routingResult?.unroutedNets.length ?? '—'} unrouted</span>
+      <span>{routingResult?.stats.jumperCount ?? 0} jumpers</span>
+      <span style={{ color: placementResult?.errors.length ? 'var(--danger)' : undefined }}>{placementResult?.errors.length ?? 0} placement issues</span>
     </footer>
   );
 }

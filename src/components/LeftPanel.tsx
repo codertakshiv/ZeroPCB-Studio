@@ -41,7 +41,7 @@ export function LeftPanel({ activeStage, onStageChange }: { activeStage: Workspa
           style={activeTab === 'components' ? { borderBottomColor: 'var(--accent)' } : {}}
           onClick={() => onStageChange('placement')}
         >
-          Library
+          Components
           {unplacedCount > 0 && (
             <span className="ml-1 px-1 rounded-full text-[8px] text-white" style={{ backgroundColor: 'var(--warning)' }}>
               {unplacedCount}

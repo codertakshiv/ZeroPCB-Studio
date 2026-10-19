@@ -12,7 +12,8 @@ import { test, expect, Page } from '@playwright/test';
  *  side can share text with these tabs (e.g. "Circuit Components").
  *  Note: counts badges are part of the accessible name ("Library1"). */
 async function openLeftTab(page: Page, name: 'Board' | 'Library' | 'Circuit') {
-  await page.getByRole('button', { name: new RegExp(`^${name}`) }).first().click();
+  const label = name === 'Library' ? 'Components' : name;
+  await page.getByRole('button', { name: new RegExp(`^${label}`) }).first().click();
 }
 
 /** Open the Library tab, search for a footprint and add the first match */
@@ -24,7 +25,17 @@ async function addFootprint(page: Page, search: string, itemText: string) {
 
 /** Click a right-panel tab (Inspect / Place / Route / Check / Build / Export) */
 async function openRightTab(page: Page, label: string) {
-  await page.getByRole('button', { name: new RegExp(label) }).first().click();
+  if (label === 'Place') return;
+  if (label === 'Route') {
+    await page.getByRole('button', { name: /^Route$/ }).click();
+    return;
+  }
+  if (label === 'Check') {
+    await page.getByRole('button', { name: /^Check$/ }).click();
+    return;
+  }
+  await page.getByRole('button', { name: 'More' }).click();
+  await page.getByRole('button', { name: label === 'Build' ? 'Assembly guide' : 'Project save, load & export' }).click();
 }
 
 /** Open the left Circuit tab (netlist: components, pins, nets) */
@@ -40,8 +51,7 @@ async function addTwoComponents(page: Page) {
 
 /** Run auto-placement and wait for success */
 async function autoPlace(page: Page) {
-  await openRightTab(page, 'Place');
-  await page.getByRole('button', { name: /Run Auto-Placement/ }).click();
+  await page.getByRole('button', { name: /Auto-arrange/ }).click();
   await expect(page.getByText('Success')).toBeVisible({ timeout: 20_000 });
 }
 
@@ -78,10 +88,26 @@ test.describe('ZeroPCB Studio', () => {
 
     await expect(page.getByText('ZeroPCB Studio').first()).toBeVisible();
     await expect(page.locator('[data-testid="canvas-component-side"] svg').first()).toBeVisible();
+    await expect(page.locator('aside').first()).toBeVisible();
+    await expect(page.locator('aside').nth(1)).toBeVisible();
+    const canvas = await page.locator('main').boundingBox();
+    expect(canvas?.width).toBeGreaterThan(600);
     await expect(page.getByRole('button', { name: /^Board\b/ }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Library\b/ }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Components\b/ }).first()).toBeVisible();
 
     expect(errors).toEqual([]);
+  });
+
+  test('keeps the phone workspace within the screen and opens panels as drawers', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.getByRole('button', { name: 'Open components' }).click();
+    await expect(page.getByPlaceholder('Search components...')).toBeVisible();
+    await page.getByRole('button', { name: 'Open inspector' }).click();
+    await expect(page.getByText(/Select a component or route/)).toBeVisible();
+    await page.keyboard.press('Escape');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   });
 
   test('adds components from the library', async ({ page }) => {
@@ -102,6 +128,35 @@ test.describe('ZeroPCB Studio', () => {
 
     await expect(page.getByText('Placed', { exact: true })).toBeVisible();
     await expect(page.getByText('2 / 2', { exact: true })).toBeVisible();
+  });
+
+  test('selects and locks a placed component in the contextual inspector', async ({ page }) => {
+    await page.goto('/');
+    await addFootprint(page, 'Axial Resistor', 'Axial Resistor');
+    await autoPlace(page);
+    await page.locator('.component-group').first().click();
+    await expect(page.getByText('R1 (10k)')).toBeVisible();
+    await page.getByRole('button', { name: /Unlocked/ }).click();
+    await expect(page.getByRole('button', { name: /Locked/ })).toBeVisible();
+    await expect(page.getByLabel('Row')).toBeDisabled();
+  });
+
+  test('moves an unlocked component by dragging a board pin', async ({ page }) => {
+    await page.goto('/');
+    await addFootprint(page, 'Axial Resistor', 'Axial Resistor');
+    await autoPlace(page);
+    await page.locator('.component-group').first().click();
+    const row = page.getByLabel('Row');
+    const column = page.getByLabel('Column');
+    const before = [await row.inputValue(), await column.inputValue()];
+    const pin = page.locator('.component-group circle').first();
+    const box = await pin.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 24, box!.y + box!.height / 2 + 24, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => [await row.inputValue(), await column.inputValue()]).not.toEqual(before);
   });
 
   test('full pipeline: net -> place -> route -> validate -> guide', async ({ page }) => {
@@ -202,7 +257,7 @@ test.describe('ZeroPCB Studio', () => {
     expect(component.ticks.length).toBeGreaterThanOrEqual(10);
     expect(Object.keys(component.labels).length).toBeGreaterThanOrEqual(5);
 
-    await page.getByRole('button', { name: 'Solder Side' }).click();
+    await page.getByRole('button', { name: 'Solder', exact: true }).click();
     await expect(page.getByText('Solder side (mirrored view)')).toBeVisible();
 
     const solder = await readRuler('canvas-solder-side');
@@ -224,7 +279,7 @@ test.describe('ZeroPCB Studio', () => {
       expect(sx!).toBeCloseTo(center2 - Number(x), 0);
     }
 
-    await page.getByRole('button', { name: 'Side by Side' }).click();
+    await page.getByRole('button', { name: 'Overlay', exact: true }).click();
     await expect(page.locator('[data-testid="canvas-component-side"] svg').first()).toBeVisible();
     await expect(page.locator('[data-testid="canvas-solder-side"] svg').first()).toBeVisible();
   });
@@ -324,6 +379,7 @@ test.describe('ZeroPCB Studio', () => {
     await openLeftTab(page, 'Board');
     await page.getByLabel('Rows').fill('24');
     await page.getByLabel('Columns').fill('16');
+    await page.getByRole('button', { name: 'Board Finish' }).click();
     await page.locator('button').filter({ hasText: 'Green' }).first().click();
     // The green palette paints the board mask with #0e7a40
     const greenMask = () =>
@@ -419,7 +475,8 @@ test.describe('ZeroPCB Studio', () => {
     // Components, placement and routes survive (footer reads them from state)
     await expect(page.getByText('24×16 @ 2.54mm')).toBeVisible();
     await expect(page.getByText('2/2 placed')).toBeVisible();
-    await expect(page.getByText('1 nets')).toBeVisible();
+    await openCircuit(page);
+    await expect(page.getByRole('button', { name: 'Nets (1)' })).toBeVisible();
     await expect(page.getByText('1 routes')).toBeVisible();
     await openCircuit(page);
     await expect(page.getByText('R1').first()).toBeVisible();
@@ -581,10 +638,10 @@ test.describe('ZeroPCB Studio', () => {
     await expect.poll(svgWidth).toBeGreaterThan(widthBeforeWheel);
 
     // Expand hides both side panels, Show panels brings them back
-    await page.getByRole('button', { name: '⛶ Expand' }).click();
+    await page.getByRole('button', { name: 'Expand', exact: true }).click();
     await expect(page.locator('aside').first()).toBeHidden();
     await expect(page.locator('aside').nth(1)).toBeHidden();
-    await page.getByRole('button', { name: '⛶ Show panels' }).click();
+    await page.getByRole('button', { name: 'Panels', exact: true }).click();
     await expect(page.locator('aside').first()).toBeVisible();
   });
 

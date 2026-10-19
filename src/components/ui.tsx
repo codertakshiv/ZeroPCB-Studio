@@ -22,24 +22,24 @@ export function Panel({
   const [open, setOpen] = React.useState(defaultOpen);
   
   return (
-    <div className={`border border-app rounded-xl overflow-hidden bg-panel panel-card ${className}`}>
+    <section className={`border-b border-app overflow-hidden bg-panel ${className}`}>
       <button
-        className="w-full flex items-center justify-between px-3.5 py-2.5 hover-bg text-left"
+        className="w-full flex items-center justify-between px-2.5 py-2 hover-bg text-left"
         onClick={() => { if (!alwaysOpen) setOpen(!open); }}
         aria-expanded={alwaysOpen || open}
       >
-        <span className="text-[13px] font-semibold text-app tracking-tight">{title}</span>
+        <span className="text-xs font-semibold text-app">{title}</span>
         <span className="flex items-center gap-2">
           {actions}
           <span className="text-muted text-xs">{alwaysOpen || open ? '▾' : '▸'}</span>
         </span>
       </button>
       {(alwaysOpen || open) && (
-        <div className="px-3.5 py-3 border-t border-app">
+        <div className="px-2.5 py-2.5">
           {children}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -62,10 +62,10 @@ export function Button({
   className?: string;
   type?: 'button' | 'submit';
 }) {
-  const base = 'rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1';
+  const base = 'rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1';
   const sizes = {
-    sm: 'px-2.5 py-1.5 text-xs',
-    md: 'px-3.5 py-2 text-sm',
+    sm: 'px-2 py-1 text-xs',
+    md: 'px-3 py-1.5 text-sm',
   };
   const variants = {
     default: 'border border-app bg-panel text-app hover-bg',
@@ -78,7 +78,6 @@ export function Button({
   if (variant === 'primary') {
     style.backgroundColor = 'var(--accent)';
     style.color = 'var(--accent-ink)';
-    style.boxShadow = '0 0 18px var(--accent-glow)';
   }
   if (variant === 'danger') style.backgroundColor = 'var(--danger)';
   

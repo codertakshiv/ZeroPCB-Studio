@@ -1,118 +1,77 @@
-/**
- * Top toolbar - project actions, mode toggles, undo/redo
- */
+/** Compact application toolbar. */
 
 import React, { useState } from 'react';
+import { Check, ChevronDown, Download, LockKeyhole, Menu, Moon, Redo2, Route, Save, Sun, Undo2, WandSparkles } from 'lucide-react';
+import type { WorkspaceStage } from '../app/stages';
 import { useAppStore } from '../app/store';
 import { saveStatusLabel } from '../storage/autosave';
 import { Button } from './ui';
 
-export function TopToolbar() {
+type Props = {
+  onRunPlacement: () => void;
+  onRunRouting: () => void;
+  onCheck: () => void;
+  onOpenStage: (stage: WorkspaceStage) => void;
+  onToggleInputs: () => void;
+  onToggleInspector: () => void;
+};
+
+export function TopToolbar({ onRunPlacement, onRunRouting, onCheck, onOpenStage, onToggleInputs, onToggleInspector }: Props) {
   const projectMetadata = useAppStore(s => s.projectMetadata);
   const setProjectMetadata = useAppStore(s => s.setProjectMetadata);
   const theme = useAppStore(s => s.theme);
   const toggleTheme = useAppStore(s => s.toggleTheme);
   const undo = useAppStore(s => s.undo);
   const redo = useAppStore(s => s.redo);
-  const history = useAppStore(s => s.history);
-  const future = useAppStore(s => s.future);
+  const canUndo = useAppStore(s => s.history.length > 0);
+  const canRedo = useAppStore(s => s.future.length > 0);
   const isDirty = useAppStore(s => s.isDirty);
   const saveStatus = useAppStore(s => s.saveStatus);
   const saveStatusAt = useAppStore(s => s.saveStatusAt);
   const saveError = useAppStore(s => s.saveError);
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(projectMetadata.name);
-  
-  const canUndo = history.length > 0;
-  const canRedo = future.length > 0;
-  
-  const commitName = () => {
-    setProjectMetadata({ name: nameValue.trim() || 'Untitled Project' });
-    setEditingName(false);
-  };
-  
+  const [menuOpen, setMenuOpen] = useState(false);
+  const commitName = () => { setProjectMetadata({ name: nameValue.trim() || 'Untitled Project' }); setEditingName(false); };
+
   return (
-    <header className="flex items-center gap-2.5 px-4 py-2 border-b border-app bg-panel">
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 mr-2">
-        <img
-          src="/favicon.svg"
-          alt="ZeroPCB Studio logo"
-          className="w-7 h-7 rounded-lg shadow-sm"
-        />
-        <span className="font-semibold text-sm hidden sm:inline tracking-tight">ZeroPCB Studio</span>
+    <header className="app-toolbar flex items-center gap-2 px-3 py-1.5 border-b border-app bg-panel">
+      <button className="mobile-toolbar-button" onClick={onToggleInputs} title="Components" aria-label="Open components"><Menu size={17} /></button>
+      <div className="flex items-center gap-2 shrink-0">
+        <img src="/favicon.svg" alt="ZeroPCB Studio" className="w-6 h-6" />
+        <span className="font-semibold text-sm hidden sm:inline">ZeroPCB Studio</span>
       </div>
-      
-      <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
-      
-      {/* Project name */}
-      {editingName ? (
-        <input
-          type="text"
-          value={nameValue}
-          onChange={(e) => setNameValue(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitName();
-            if (e.key === 'Escape') setEditingName(false);
-          }}
-          autoFocus
-          className="px-2 py-0.5 text-sm rounded border border-app bg-app text-app w-48"
-        />
-      ) : (
-        <button
-          className="px-2 py-0.5 text-sm rounded hover-bg text-app"
-          onClick={() => { setNameValue(projectMetadata.name); setEditingName(true); }}
-          title="Click to rename project"
-        >
-          {projectMetadata.name}
-          {isDirty && <span className="text-amber-500 ml-1" title="Unsaved changes">•</span>}
-        </button>
-      )}
-      
-      <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
-      
-      {/* Undo/Redo */}
-      <div className="flex gap-0.5">
-        <Button size="sm" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">↶</Button>
-        <Button size="sm" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷</Button>
+      <span className="toolbar-divider" />
+      {editingName ? <input aria-label="Project name" autoFocus value={nameValue} onChange={e => setNameValue(e.target.value)}
+        onBlur={commitName} onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') setEditingName(false); }}
+        className="w-36 min-w-0 bg-app border border-app rounded px-2 py-1 text-xs" /> :
+        <button className="max-w-40 truncate px-1 py-1 text-xs hover-bg rounded" title="Rename project" onClick={() => { setNameValue(projectMetadata.name); setEditingName(true); }}>
+          {projectMetadata.name}{isDirty && <span className="ml-1 text-amber-400">•</span>}
+        </button>}
+      <div className="flex gap-1">
+        <Button size="sm" className="toolbar-icon" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 size={15} /></Button>
+        <Button size="sm" className="toolbar-icon" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"><Redo2 size={15} /></Button>
       </div>
-      
       <div className="flex-1" />
-      
-      {/* Quick actions are in the side panels for space efficiency */}
-      <div className="hidden md:flex items-center gap-2 text-[10px] text-muted">
-        <kbd className="px-1 rounded border border-app">Ctrl+Z</kbd> undo
-        <kbd className="px-1 rounded border border-app">Del</kbd> delete
-        <kbd className="px-1 rounded border border-app">R</kbd> rotate
-        <kbd className="px-1 rounded border border-app">L</kbd> lock
+      <div className="autosave-status" data-testid="autosave-indicator" title={saveError || 'Saved automatically in this browser'}>
+        <span className={`save-dot ${saveStatus === 'saving' ? 'saving' : ''}`} data-state={saveStatus} />
+        <span className="hidden sm:inline">{saveStatusLabel(saveStatus, saveStatusAt, saveError)}</span>
       </div>
-      
-      {/* Autosave status - the project lives in this browser, nothing else */}
-      <div
-        className="flex items-center gap-1.5 text-[10px] text-muted"
-        data-testid="autosave-indicator"
-        title={saveError || 'Saved in this browser automatically - no account, no cloud'}
-      >
-        <span
-          className={`inline-block w-1.5 h-1.5 rounded-full ${saveStatus === 'saving' ? 'animate-pulse' : ''}`}
-          style={{
-            backgroundColor:
-              saveStatus === 'saving' ? 'var(--accent)'
-              : saveStatus === 'saved' ? 'var(--text-muted)'
-              : saveStatus === 'error' ? 'var(--danger)'
-              : 'var(--border)',
-          }}
-        />
-        <span className="hidden sm:inline" style={{ color: saveStatus === 'error' ? 'var(--danger)' : undefined }}>
-          {saveStatusLabel(saveStatus, saveStatusAt, saveError)}
-        </span>
+      <Button size="sm" variant="primary" className="toolbar-action" onClick={onRunPlacement} title="Arrange components; review any proposed moves"><WandSparkles size={14} /><span>Auto-arrange</span></Button>
+      <Button size="sm" onClick={onRunRouting} title="Route connected nets"><Route size={14} /><span className="toolbar-label">Route</span></Button>
+      <Button size="sm" onClick={onCheck} title="Validate the board"><Check size={14} /><span className="toolbar-label">Check</span></Button>
+      <div className="toolbar-menu-wrap">
+        <Button size="sm" onClick={() => setMenuOpen(!menuOpen)} title="Project tools"><ChevronDown size={15} /><span className="toolbar-label">More</span></Button>
+        {menuOpen && <>
+          <button className="menu-dismiss" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+          <div className="toolbar-menu">
+            <button onClick={() => { onOpenStage('export'); setMenuOpen(false); }}><Save size={14} />Project save, load & export</button>
+            <button onClick={() => { onOpenStage('assembly'); setMenuOpen(false); }}><Download size={14} />Assembly guide</button>
+            <button onClick={() => { toggleTheme(); setMenuOpen(false); }}>{theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}Switch theme</button>
+          </div>
+        </>}
       </div>
-      
-      {/* Theme toggle */}
-      <Button size="sm" onClick={toggleTheme} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}>
-        {theme === 'light' ? '🌙' : '☀️'}
-      </Button>
+      <button className="mobile-toolbar-button" onClick={onToggleInspector} title="Inspector" aria-label="Open inspector"><LockKeyhole size={16} /></button>
     </header>
   );
 }

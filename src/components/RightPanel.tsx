@@ -16,32 +16,26 @@ import { coordToLabel } from '../board/types';
 
 export function RightPanel({ activeStage }: { activeStage: WorkspaceStage }) {
   const validationResult = useAppStore(s => s.validationResult);
-  const circuit = useAppStore(s => s.circuit);
+  const placementResult = useAppStore(s => s.placementResult);
+  const placementProposal = useAppStore(s => s.placementProposal);
+  const selectedComponentIds = useAppStore(s => s.selectedComponentIds);
+  const selectedNetId = useAppStore(s => s.selectedNetId);
   
   const errorCount = validationResult?.issues.filter(i => i.severity === 'error').length || 0;
   
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-app bg-panel">
-        <span className="text-[10px] uppercase tracking-widest text-muted">
-          {activeStage === 'project' ? 'Inspector' : activeStage === 'circuit' ? 'Circuit properties' : activeStage}
+        <span className="text-xs font-medium text-app">
+          {activeStage === 'project' || activeStage === 'placement' ? 'Inspector' : activeStage === 'circuit' ? 'Circuit' : activeStage === 'validation' ? 'Validation' : activeStage === 'routing' ? 'Routing' : activeStage === 'assembly' ? 'Assembly' : 'Project files'}
         </span>
         {activeStage === 'validation' && errorCount > 0 && (
           <span className="rounded px-1.5 py-0.5 text-[9px] text-white" style={{ backgroundColor: 'var(--danger)' }}>{errorCount} errors</span>
         )}
       </div>
       
-      {circuit.components.length === 0 && (
-        <div className="mx-2 mt-2 px-2 py-1.5 rounded border border-app text-[10px] text-muted leading-relaxed"
-          style={{ backgroundColor: 'var(--hover-bg)' }}>
-          The <strong className="text-app">Circuit</strong> is empty: add parts in the{' '}
-          <strong className="text-app">Library</strong>, wire them in the{' '}
-          <strong className="text-app">Schematic</strong> view, then place and route here.
-        </div>
-      )}
-      
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3">
-        {(activeStage === 'project' || activeStage === 'circuit') && <InspectorPanel />}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5">
+        {(activeStage === 'project' || activeStage === 'circuit' || (activeStage === 'placement' && !placementResult && !placementProposal) || selectedComponentIds.size > 0 || selectedNetId) && <InspectorPanel />}
         {activeStage === 'placement' && <PlacementPanel />}
         {activeStage === 'routing' && <RoutingPanel />}
         {activeStage === 'validation' && <ValidationPanel />}
@@ -152,7 +146,7 @@ function InspectorPanel() {
   if (selectedComponents.length === 0 && selectedCircuitComponents.length === 0) {
     return (
       <div className="flex flex-col gap-3">
-        <Panel title="Board Summary">
+        <Panel title="Board" defaultOpen={false}>
           <div className="text-xs flex flex-col gap-1">
             <div className="flex justify-between">
               <span className="text-muted">Board</span>
@@ -182,8 +176,7 @@ function InspectorPanel() {
         </Panel>
         
         <p className="text-[10px] text-muted text-center px-2">
-          Select a component on the board or in the library to inspect it.
-          Drag component pins to move them.
+          Select a component or route to inspect it.
         </p>
       </div>
     );

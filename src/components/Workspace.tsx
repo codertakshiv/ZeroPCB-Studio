@@ -2,7 +2,7 @@
  * Workspace - central board area with view tabs, zoom, pan, and drag-drop editing
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useAppStore } from '../app/store';
 import { BoardCanvas } from './BoardCanvas';
 import { SchematicCanvas } from './SchematicCanvas';
@@ -57,8 +57,6 @@ export function Workspace() {
   // Swallow the click that trails a pan so panning never changes a selection
   const suppressClickRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  // "Ready to build" welcome card - dismissible, comes back on reload
-  const [showWelcome, setShowWelcome] = useState(true);
   
   // Track context menu state for track cuts
   const [contextMenu, setContextMenu] = useState<{
@@ -139,7 +137,7 @@ export function Workspace() {
     suppressClickRef.current = false;
     e.stopPropagation();
   }, []);
-  
+
   // Cursor-anchored wheel zoom + pinch/touch gestures (see useCursorZoom)
   const scrollRef = useRef<HTMLDivElement>(null);
   useCursorZoom(scrollRef, zoom, setZoom, {
@@ -147,6 +145,30 @@ export function Workspace() {
     max: 4,
     getPan: () => panOffset,
   });
+
+  const fitBoard = useCallback(() => {
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+    const svgs = Array.from(viewport.querySelectorAll<SVGSVGElement>('[data-testid^="canvas-"] svg'));
+    if (!svgs.length) return;
+    const width = svgs.reduce((sum, svg) => sum + (Number(svg.getAttribute('width')) || svg.getBoundingClientRect().width), 0) + Math.max(0, svgs.length - 1) * 24;
+    const height = Math.max(...svgs.map(svg => Number(svg.getAttribute('height')) || svg.getBoundingClientRect().height));
+    if (!width || !height) return;
+    const fit = Math.min((viewport.clientWidth - 56) / width, (viewport.clientHeight - 56) / height, 2);
+    const nextZoom = Math.max(0.25, fit);
+    setZoom(nextZoom);
+    setPanOffset({ x: 0, y: 0 });
+  }, [setPanOffset, setZoom]);
+
+  useEffect(() => {
+    if (workspaceView !== 'board') return;
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+    const frame = requestAnimationFrame(fitBoard);
+    const observer = new ResizeObserver(() => fitBoard());
+    observer.observe(viewport);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [workspaceView, activeSide, fitBoard]);
 
   const proposalComponents = placementProposal?.placement.placedComponents.filter(candidate => {
     const current = components.find(component => component.id === candidate.id);
@@ -201,7 +223,7 @@ export function Workspace() {
   return (
     <div className="flex flex-col h-full relative select-none" ref={containerRef}>
       {/* View controls */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-app bg-panel flex-wrap">
+      <div className="workspace-toolbar flex items-center gap-1.5 px-2 py-1 border-b border-app bg-panel flex-wrap">
         {/* Editor switch: Schematic (circuit capture) / Board (physical build) */}
         <div className="flex rounded-lg border border-app overflow-hidden">
           <button
@@ -232,21 +254,21 @@ export function Workspace() {
                 style={activeSide === 'component' ? { backgroundColor: 'var(--accent)', color: 'var(--accent-ink)' } : {}}
                 onClick={() => setActiveSide('component')}
               >
-                Component Side
+                Front
               </button>
               <button
                 className={`px-2.5 py-1.5 text-xs ${activeSide === 'solder' ? '' : 'hover-bg text-app'}`}
                 style={activeSide === 'solder' ? { backgroundColor: 'var(--accent)', color: 'var(--accent-ink)' } : {}}
                 onClick={() => setActiveSide('solder')}
               >
-                Solder Side
+                Solder
               </button>
               <button
                 className={`px-2.5 py-1.5 text-xs ${activeSide === 'both' ? '' : 'hover-bg text-app'}`}
                 style={activeSide === 'both' ? { backgroundColor: 'var(--accent)', color: 'var(--accent-ink)' } : {}}
                 onClick={() => setActiveSide('both')}
               >
-                Side by Side
+                Overlay
               </button>
             </div>
             
@@ -268,13 +290,6 @@ export function Workspace() {
               {showHoles ? '◉' : '○'} Holes
             </button>
 
-            <button
-              className="px-2.5 py-1.5 text-xs rounded-lg border border-app hover-bg text-app"
-              onClick={() => setFocusMode(!focusMode)}
-              title={focusMode ? 'Exit full-screen (show side panels)' : 'Enter full-screen (hide side panels)'}
-            >
-              {focusMode ? '⛶' : '⛶'}
-            </button>
           </>
         ) : (
           <>
@@ -316,19 +331,13 @@ export function Workspace() {
         <div className="flex-1" />
         
         <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            onClick={() => setFocusMode(!focusMode)}
-            title={focusMode ? 'Exit fullscreen workspace' : 'Open a fullscreen workspace'}
-          >
-            {focusMode ? '⛶ Show panels' : '⛶ Expand'}
-          </Button>
+          <Button size="sm" className="fullscreen-button" onClick={() => setFocusMode(!focusMode)} title={focusMode ? 'Show side panels' : 'Expand workspace'}>{focusMode ? 'Panels' : 'Expand'}</Button>
           <Button size="sm" onClick={() => (workspaceView === 'board' ? setZoom(zoom * 0.85) : setSchematicZoom(schematicZoom * 0.85))} title="Zoom out">−</Button>
           <span className="text-xs text-muted font-mono w-12 text-center">
             {Math.round((workspaceView === 'board' ? zoom : schematicZoom) * 100)}%
           </span>
           <Button size="sm" onClick={() => (workspaceView === 'board' ? setZoom(zoom * 1.15) : setSchematicZoom(schematicZoom * 1.15))} title="Zoom in">+</Button>
-          <Button size="sm" onClick={() => { if (workspaceView === 'board') { setZoom(1); setPanOffset({ x: 0, y: 0 }); } else { setSchematicZoom(1); } }} title="Reset zoom">⤢ Fit</Button>
+          <Button size="sm" onClick={() => { if (workspaceView === 'board') fitBoard(); else setSchematicZoom(1); }} title="Fit board to workspace">Fit</Button>
         </div>
       </div>
       
@@ -340,29 +349,6 @@ export function Workspace() {
         </div>
       )}
       
-      {showWelcome && components.length === 0 && workspaceView === 'board' && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <div className="relative px-6 py-5 pt-4 rounded-2xl shadow-xl bg-panel border border-app max-w-xs text-center">
-            <button
-              type="button"
-              onClick={() => setShowWelcome(false)}
-              title="Dismiss this card"
-              aria-label="Dismiss"
-              className="pointer-events-auto absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center rounded-full text-muted hover-bg text-xs leading-none"
-            >
-              ✕
-            </button>
-            <img src="/favicon.svg" alt="" className="w-9 h-9 mx-auto mb-2 rounded-lg" />
-            <h3 className="font-semibold text-sm mb-1.5">Ready to build</h3>
-            <p className="text-xs text-muted leading-relaxed">
-              1. Add components from the Library<br />
-              2. Wire them in the <span className="font-semibold" style={{ color: 'var(--accent)' }}>Schematic</span> view<br />
-              3. Run auto-placement, then route<br />
-              4. Export the soldering plan
-            </p>
-          </div>
-        </div>
-      )}
       
       {/* Board / schematic area */}
       {workspaceView === 'schematic' ? (
@@ -382,11 +368,11 @@ export function Workspace() {
         onContextMenu={(e) => e.preventDefault()}
       >
         <div
-          className="p-4 flex gap-6"
+          className="board-stage flex min-h-full min-w-full items-center justify-center gap-6 p-5"
           style={{
             transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
-            transformOrigin: 'top left',
-            width: 'fit-content',
+            transformOrigin: 'center center',
+            width: 'max-content',
           }}
         >
           {(activeSide === 'component' || activeSide === 'both') && (

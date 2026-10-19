@@ -163,102 +163,46 @@ a:focus-visible,
   /* Engineering grid behind the canvas and the app shell (neutral tones) */
   .bg-app-grid {
     background-color: var(--bg);
-    background-image:
-      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px),
-      radial-gradient(70% 60% at 50% 0%, var(--glow), transparent 75%);
-    background-size: 44px 44px, 44px 44px, 100% 100%;
-    background-position: 0 0, 0 0, 0 0;
+    background-image: linear-gradient(to right, var(--grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 44px 44px;
   }
 
-  .panel-card {
-    box-shadow: var(--panel-shadow);
-  }
 }
 
-/* Compact, persistent stage navigation for the engineering workflow. */
-.stage-navigation {
-  min-height: 40px;
-  scrollbar-width: none;
+/* Compact CAD shell and small-screen drawers. */
+.app-toolbar { min-height: 44px; position: relative; z-index: 40; }
+.toolbar-divider { width: 1px; height: 20px; background: var(--border); flex: 0 0 auto; }
+.toolbar-icon { padding: 5px 7px !important; }
+.toolbar-action { white-space: nowrap; }
+.toolbar-label { display: inline; }
+.autosave-status { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.save-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.save-dot[data-state="error"] { background: var(--danger); }
+.save-dot[data-state="saving"] { background: var(--warning); }
+.mobile-toolbar-button { display: none; align-items: center; justify-content: center; padding: 6px; color: var(--text-muted); }
+.toolbar-menu-wrap { position: relative; }
+.toolbar-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 210px; padding: 4px; background: var(--panel-bg); border: 1px solid var(--border); box-shadow: var(--panel-shadow); }
+.toolbar-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; text-align: left; font-size: 11px; color: var(--text); }
+.toolbar-menu button:hover { background: var(--hover-bg); }
+.menu-dismiss { position: fixed; inset: 0; z-index: 50; cursor: default; }
+.toolbar-menu { z-index: 60; }
+.drawer-backdrop { display: none; }
+.app-sidebar { min-height: 0; }
+
+@media (max-width: 1279px) {
+  .mobile-toolbar-button { display: inline-flex; }
+  .app-sidebar-right.mobile-visible { display: flex; position: fixed; z-index: 35; top: 44px; right: 0; bottom: 20px; width: min(88vw, 340px); border-left: 1px solid var(--border); background: var(--panel-bg); }
+  .drawer-backdrop { display: block; position: fixed; z-index: 30; inset: 44px 0 20px; background: rgba(0,0,0,.55); }
+  .app-sidebar-left.mobile-visible { display: flex; position: fixed; z-index: 35; top: 44px; left: 0; bottom: 20px; width: min(88vw, 330px); border-right: 1px solid var(--border); background: var(--panel-bg); }
 }
-
-.stage-navigation::-webkit-scrollbar {
-  display: none;
-}
-
-.stage-tab {
-  min-height: 29px;
-  border-left: 2px solid transparent;
-  border-radius: 2px;
-  transition: background-color 100ms ease, color 100ms ease;
-}
-
-.stage-tab-active {
-  color: var(--text);
-  background: var(--hover-bg);
-  border-left-color: var(--accent);
-}
-
-.mobile-panel-toggle {
-  display: none;
-  align-items: center;
-  flex: 0 0 auto;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.mobile-panel-toggle:hover {
-  color: var(--text);
-  background: var(--hover-bg);
-}
-
-@media (max-width: 1023px) {
-  .mobile-panel-toggle {
-    display: inline-flex;
-  }
-
-  .app-sidebar-right.mobile-visible {
-    display: flex;
-    position: fixed;
-    z-index: 30;
-    top: 88px;
-    right: 0;
-    bottom: 20px;
-    width: min(90vw, 360px);
-    border: 1px solid var(--border);
-    box-shadow: var(--panel-shadow);
-  }
-}
-
 @media (max-width: 767px) {
-  .app-sidebar-left.mobile-visible {
-    display: flex;
-    position: fixed;
-    z-index: 30;
-    top: 88px;
-    left: 0;
-    bottom: 20px;
-    width: min(90vw, 340px);
-    border: 1px solid var(--border);
-    box-shadow: var(--panel-shadow);
-  }
-
-  .stage-navigation {
-    gap: 0;
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-
-  .stage-tab {
-    gap: 5px;
-    padding-left: 8px;
-    padding-right: 8px;
-    font-size: 10px;
-  }
+  .app-toolbar { gap: 5px; padding: 5px 6px; }
+  .toolbar-divider { display: none; }
+  .toolbar-action { padding: 6px 8px !important; }
+  .toolbar-action span { display: inline; }
+  .app-toolbar > button:not(.mobile-toolbar-button) { padding-left: 7px; padding-right: 7px; }
+  .toolbar-label { display: none; }
+  .app-sidebar-right.mobile-visible { width: min(88vw, 330px); }
 }
 
 /* ============ SCHEMATIC CANVAS ============ */

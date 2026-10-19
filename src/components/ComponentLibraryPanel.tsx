@@ -116,7 +116,9 @@ export function ComponentLibraryPanel() {
           placeholder="Search components..."
         />
         
-        <div className="flex flex-wrap gap-1 mt-2 max-h-20 overflow-y-auto">
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[10px] text-muted py-1">Categories</summary>
+          <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
           <button
             className={`px-2 py-0.5 text-[10px] rounded border ${selectedCategory === 'all' ? '' : 'border-app text-app hover-bg'}`}
             style={selectedCategory === 'all' ? { backgroundColor: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-ink)' } : {}}
@@ -134,7 +136,8 @@ export function ComponentLibraryPanel() {
               {CATEGORY_LABELS[cat] || cat}
             </button>
           ))}
-        </div>
+          </div>
+        </details>
         
         <div className="mt-2 max-h-64 overflow-y-auto flex flex-col gap-1">
           {filteredFootprints.length === 0 && (
@@ -214,7 +217,8 @@ export function ComponentLibraryPanel() {
         ) : (
           <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
             {circuit.components.map(comp => {
-              const isPlaced = placedComponents.some(p => p.id === comp.id);
+              const placedComponent = placedComponents.find(p => p.id === comp.id);
+              const isPlaced = !!placedComponent;
               const fp = ALL_STANDARD_FOOTPRINTS.find(f => f.id === comp.footprintId);
               const isSelected = focusComponentId.has(comp.id);
               
@@ -269,6 +273,7 @@ export function ComponentLibraryPanel() {
                   <span className="text-muted truncate mx-1 flex-1 text-right text-[10px]">
                     {comp.value || fp?.name || comp.footprintId}
                   </span>
+                  {placedComponent?.locked && <span title="Position locked" aria-label="Position locked" className="text-[10px]">🔒</span>}
                   <span className={`text-[9px] px-1 rounded ${isPlaced ? '' : 'opacity-60'}`}
                     style={{ 
                       backgroundColor: isPlaced ? 'var(--success)' : 'var(--warning)', 
