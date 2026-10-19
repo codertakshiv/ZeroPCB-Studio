@@ -145,6 +145,7 @@ export function SchematicCanvas() {
       path: string;
       terminals: { x: number; y: number }[];
       junctions: { x: number; y: number }[];
+      bridges: { x: number; y: number; horizontal: boolean }[];
     }[] = [];
 
     // ---- wire router ---------------------------------------------------
@@ -167,6 +168,9 @@ export function SchematicCanvas() {
       };
     });
     const pinPoints = Array.from(pinIndex.values(), pin => ({ x: pin.x, y: pin.y }));
+    // Completed nets are routing obstacles for later nets. Crossing them is
+    // allowed, but running along the same line is avoided so colors stay clear.
+    const reservedWireSegments: [Point, Point][] = [];
 
     /** Is the body box crossed by the axis-aligned segment a->b? */
     const crossesBox = (a: Point, b: Point, box: (typeof boxes)[number]) =>
@@ -188,25 +192,39 @@ export function SchematicCanvas() {
       if (!horizontal && p.x !== q.x) return [p, q];
 
       const pinHits: Point[] = [];
+      const wireBoxes: typeof boxes = [];
       const boxHits: typeof boxes = [];
+      const pAlong = horizontal ? p.x : p.y;
+      const qAlong = horizontal ? q.x : q.y;
+      const lo = Math.min(pAlong, qAlong);
+      const hi = Math.max(pAlong, qAlong);
+
+      for (const [from, to] of reservedWireSegments) {
+        if (horizontal && from.y === to.y && Math.abs(from.y - p.y) < 0.05) {
+          if (Math.min(hi, Math.max(from.x, to.x)) - Math.max(lo, Math.min(from.x, to.x)) > 0.2) {
+            wireBoxes.push({ left: Math.min(from.x, to.x), right: Math.max(from.x, to.x), top: from.y - 0.12, bottom: from.y + 0.12 });
+          }
+        } else if (!horizontal && from.x === to.x && Math.abs(from.x - p.x) < 0.05) {
+          if (Math.min(hi, Math.max(from.y, to.y)) - Math.max(lo, Math.min(from.y, to.y)) > 0.2) {
+            wireBoxes.push({ left: from.x - 0.12, right: from.x + 0.12, top: Math.min(from.y, to.y), bottom: Math.max(from.y, to.y) });
+          }
+        }
+      }
+      const routeBoxes = [...boxes, ...wireBoxes];
 
       if (horizontal) {
-        const lo = Math.min(p.x, q.x);
-        const hi = Math.max(p.x, q.x);
         for (const pin of pinPoints) {
           if (pin.y === p.y && pin.x > lo + 0.05 && pin.x < hi - 0.05) pinHits.push(pin);
         }
-        for (const box of boxes) {
+        for (const box of routeBoxes) {
           if (p.y <= box.top || p.y >= box.bottom) continue;
           if (Math.min(hi, box.right) - Math.max(lo, box.left) > 0.2) boxHits.push(box);
         }
       } else {
-        const lo = Math.min(p.y, q.y);
-        const hi = Math.max(p.y, q.y);
         for (const pin of pinPoints) {
           if (pin.x === p.x && pin.y > lo + 0.05 && pin.y < hi - 0.05) pinHits.push(pin);
         }
-        for (const box of boxes) {
+        for (const box of routeBoxes) {
           if (p.x <= box.left || p.x >= box.right) continue;
           if (Math.min(hi, box.bottom) - Math.max(lo, box.top) > 0.2) boxHits.push(box);
         }
@@ -216,11 +234,7 @@ export function SchematicCanvas() {
 
       // Blocked span along the leg (entry / exit in travel order) plus the two
       // lanes that clear everything at once.
-      const pAlong = horizontal ? p.x : p.y;
-      const qAlong = horizontal ? q.x : q.y;
       const dir = qAlong >= pAlong ? 1 : -1;
-      const lo = Math.min(pAlong, qAlong);
-      const hi = Math.max(pAlong, qAlong);
 
       const nearEdges = [
         ...pinHits.map(t => (horizontal ? t.x : t.y) - PAD),
@@ -244,8 +258,10 @@ export function SchematicCanvas() {
       );
       const lanes = base - laneLow <= laneHigh - base ? [laneLow, laneHigh] : [laneHigh, laneLow];
 
-      const t1 = Math.min(Math.max(entry - dir * TURN, lo + 0.2), hi - 0.2);
-      const t2 = Math.min(Math.max(exit + dir * TURN, lo + 0.2), hi - 0.2);
+      // Let the shoulders extend just beyond the blocked span. Clamping these
+      // to the original leg kept them inside an overlapping wire at its ends.
+      const t1 = entry - dir * TURN;
+      const t2 = exit + dir * TURN;
       if (dir > 0 ? t2 <= t1 + 0.1 : t2 >= t1 - 0.1) return [p, q];
 
       for (const lane of lanes) {
@@ -257,7 +273,7 @@ export function SchematicCanvas() {
         // Keep the detour only if it really clears every body and pin.
         const segments: [Point, Point][] = [[a, b], [b, c], [c, d]];
         const clean = segments.every(([s, e]) =>
-          !boxes.some(box => crossesBox(s, e, box)) && !pinPoints.some(pin => pinOnSegment(pin, s, e)),
+          !routeBoxes.some(box => crossesBox(s, e, box)) && !pinPoints.some(pin => pinOnSegment(pin, s, e)),
         );
         if (clean) return [p, a, b, c, d, q];
       }
@@ -303,7 +319,40 @@ export function SchematicCanvas() {
         path: wirePointsToPath(all.map(p => ({ x: u(p.x), y: u(p.y) }))),
         terminals,
         junctions,
+        bridges: [],
       });
+
+      for (let i = 0; i < all.length - 1; i++) {
+        reservedWireSegments.push([all[i], all[i + 1]]);
+      }
+    }
+
+    // A bridge is drawn on the later wire at each unavoidable orthogonal
+    // crossing. The little hop makes clear that the nets cross without joining.
+    for (let upper = 0; upper < out.length; upper++) {
+      for (let lower = 0; lower < upper; lower++) {
+        for (let i = 0; i < out[upper].points.length - 1; i++) {
+          const a = out[upper].points[i];
+          const b = out[upper].points[i + 1];
+          const upperHorizontal = a.y === b.y;
+          if (!upperHorizontal && a.x !== b.x) continue;
+          for (let j = 0; j < out[lower].points.length - 1; j++) {
+            const c = out[lower].points[j];
+            const d = out[lower].points[j + 1];
+            const lowerHorizontal = c.y === d.y;
+            if (upperHorizontal === lowerHorizontal || (c.x !== d.x && c.y !== d.y)) continue;
+            const horizontal = upperHorizontal ? [a, b] : [c, d];
+            const vertical = upperHorizontal ? [c, d] : [a, b];
+            const x = vertical[0].x;
+            const y = horizontal[0].y;
+            const insideHorizontal = x > Math.min(horizontal[0].x, horizontal[1].x) + 0.2 && x < Math.max(horizontal[0].x, horizontal[1].x) - 0.2;
+            const insideVertical = y > Math.min(vertical[0].y, vertical[1].y) + 0.2 && y < Math.max(vertical[0].y, vertical[1].y) - 0.2;
+            if (insideHorizontal && insideVertical && !out[upper].bridges.some(mark => Math.abs(mark.x - x) < 0.05 && Math.abs(mark.y - y) < 0.05)) {
+              out[upper].bridges.push({ x, y, horizontal: upperHorizontal });
+            }
+          }
+        }
+      }
     }
     return out;
   }, [circuit.nets, pinIndex, models]);
@@ -670,6 +719,29 @@ export function SchematicCanvas() {
                   </g>
                 </g>
               );
+            })}
+          </g>
+
+          {/* Bridge humps clarify crossings between separate nets. A plus/dot
+              is reserved for a real junction, so these wires never look joined. */}
+          <g pointerEvents="none">
+            {wires.flatMap(wire => {
+              const color = selectedNetId === wire.net.id ? 'var(--accent)' : wire.color;
+              return wire.bridges.map((bridge, index) => {
+                const x = u(bridge.x);
+                const y = u(bridge.y);
+                const radius = u(0.55);
+                const lift = u(0.45);
+                const d = bridge.horizontal
+                  ? `M ${x - radius} ${y} Q ${x} ${y - lift} ${x + radius} ${y}`
+                  : `M ${x} ${y - radius} Q ${x + lift} ${y} ${x} ${y + radius}`;
+                return (
+                  <g key={`${wire.net.id}-bridge-${index}`} className="sch-wire-bridge" data-testid="schematic-wire-bridge">
+                    <path d={d} fill="none" stroke="var(--sch-bg)" strokeWidth={7} strokeLinecap="round" />
+                    <path d={d} fill="none" stroke={color} strokeWidth={2.8} strokeLinecap="round" />
+                  </g>
+                );
+              });
             })}
           </g>
 

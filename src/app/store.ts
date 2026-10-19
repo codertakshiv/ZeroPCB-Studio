@@ -144,6 +144,7 @@ export interface AppState {
   placedComponents: PlacedComponent[];
   placementConfig: PlacementConfig;
   placementResult: PlacementResult | null;
+  placementProposal: PlacementResult | null;
   
   // Routing
   routes: Route[];
@@ -228,6 +229,8 @@ export interface AppState {
   lockComponent: (componentId: string, locked: boolean) => void;
   
   runPlacement: () => Promise<void>;
+  acceptPlacementProposal: () => void;
+  rejectPlacementProposal: () => void;
   setPlacementConfig: (config: Partial<PlacementConfig>) => void;
   setPlacementMode: (mode: PlacementMode) => void;
   setOptimizationIntensity: (intensity: OptimizationIntensity) => void;
@@ -326,6 +329,7 @@ export const useAppStore = create<AppState>((set, get) => {
     placedComponents: [],
     placementConfig: { ...DEFAULT_PLACEMENT_CONFIG },
     placementResult: null,
+    placementProposal: null,
     routes: [],
     routingConfig: { ...DEFAULT_ROUTING_CONFIG },
     routingResult: null,
@@ -430,6 +434,7 @@ export const useAppStore = create<AppState>((set, get) => {
         ...(layoutInvalidated
           ? {
               placedComponents: [],
+              placementProposal: null,
               routes: [],
               placementResult: null,
               routingResult: null,
@@ -556,6 +561,7 @@ export const useAppStore = create<AppState>((set, get) => {
         circuit,
         // Layout-derived state no longer matches the imported circuit
         placedComponents: [],
+        placementProposal: null,
         placementResult: null,
         routes: [],
         routingResult: null,
@@ -980,6 +986,7 @@ export const useAppStore = create<AppState>((set, get) => {
       
       set({
         placedComponents: newPlaced,
+        placementProposal: null,
         routes: [],
         lockedRouteIds: new Set<string>(),
         routingResult: null,
@@ -998,6 +1005,7 @@ export const useAppStore = create<AppState>((set, get) => {
       
       set({
         placedComponents: state.placedComponents.filter(c => c.id !== componentId),
+        placementProposal: null,
         // The part is gone - it must not stay selected (the Inspect panel would
         // keep showing it, and Del would keep targeting a missing component).
         selectedComponentIds: new Set([...state.selectedComponentIds].filter(id => id !== componentId)),
@@ -1095,13 +1103,33 @@ export const useAppStore = create<AppState>((set, get) => {
           state.placementConfig
         );
         
+        const originalById = new Map(state.placedComponents.map(component => [component.id, component]));
+        const movedExisting = result.placedComponents.some(component => {
+          const original = originalById.get(component.id);
+          return original && !original.locked && (
+            original.position.row !== component.position.row ||
+            original.position.col !== component.position.col ||
+            original.orientation !== component.orientation
+          );
+        });
+
+        if (movedExisting) {
+          set({
+            placementProposal: result,
+            placementResult: result,
+            isOptimizing: false,
+            optimizationStatus: 'Review the proposed component moves before applying them.',
+          });
+          return;
+        }
+
         state.pushHistory();
-        
         set({
           placedComponents: result.placedComponents,
+          placementProposal: null,
           placementResult: result,
           isOptimizing: false,
-          optimizationStatus: result.success 
+          optimizationStatus: result.success
             ? `Placement complete: ${result.placedComponents.length} components placed (${result.iterations} iterations, ${result.timeMs}ms)`
             : `Placement incomplete: ${result.errors.length} error(s)`,
           routes: [], // Routes invalidated by placement change
@@ -1114,6 +1142,31 @@ export const useAppStore = create<AppState>((set, get) => {
           optimizationStatus: `Placement failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         });
       }
+    },
+
+    acceptPlacementProposal: () => {
+      const proposal = get().placementProposal;
+      if (!proposal) return;
+      get().pushHistory();
+      set({
+        placedComponents: proposal.placedComponents,
+        placementProposal: null,
+        placementResult: proposal,
+        optimizationStatus: proposal.success
+          ? `Placement applied: ${proposal.placedComponents.length} components placed.`
+          : `Placement applied with ${proposal.errors.length} placement issue(s).`,
+        routes: [],
+        validationResult: null,
+        isDirty: true,
+      });
+    },
+
+    rejectPlacementProposal: () => {
+      if (!get().placementProposal) return;
+      set({
+        placementProposal: null,
+        optimizationStatus: 'Placement proposal rejected; component positions are unchanged.',
+      });
     },
     
     setPlacementConfig: (config) => {
@@ -1488,6 +1541,7 @@ export const useAppStore = create<AppState>((set, get) => {
       
       set({
         ...applySnapshot(previous),
+        placementProposal: null,
         history: state.history.slice(0, -1),
         future: [...state.future, current].slice(-MAX_HISTORY),
         validationResult: null,
@@ -1504,6 +1558,7 @@ export const useAppStore = create<AppState>((set, get) => {
       
       set({
         ...applySnapshot(next),
+        placementProposal: null,
         future: state.future.slice(0, -1),
         history: [...state.history, current].slice(-MAX_HISTORY),
         validationResult: null,
@@ -1535,6 +1590,7 @@ export const useAppStore = create<AppState>((set, get) => {
           board: newBoard,
           circuit: data.circuit || state.circuit,
           placedComponents: data.placedComponents || [],
+          placementProposal: null,
           routes: data.routes || [],
           routingConfig: {
             ...state.routingConfig,
@@ -1567,6 +1623,7 @@ export const useAppStore = create<AppState>((set, get) => {
         circuit,
         netIdCounter: 1,
         placedComponents: [],
+        placementProposal: null,
         placementResult: null,
         routes: [],
         routingResult: null,

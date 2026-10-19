@@ -149,6 +149,28 @@ describe('Store: placement', () => {
     useAppStore.getState().lockComponent(compId, false);
     expect(useAppStore.getState().placedComponents[0].locked).toBe(false);
   });
+
+  it('requires approval before auto-placement moves an existing component', async () => {
+    const compId = useAppStore.getState().addComponentToCircuit('resistor-axial', 'R1');
+    useAppStore.getState().placeComponent(compId, { row: 20, col: 10 }, 0);
+    const original = useAppStore.getState().placedComponents[0].position;
+
+    await useAppStore.getState().runPlacement();
+    let state = useAppStore.getState();
+    expect(state.placementProposal).not.toBeNull();
+    expect(state.placedComponents[0].position).toEqual(original);
+
+    state.rejectPlacementProposal();
+    expect(useAppStore.getState().placementProposal).toBeNull();
+    expect(useAppStore.getState().placedComponents[0].position).toEqual(original);
+
+    await useAppStore.getState().runPlacement();
+    state = useAppStore.getState();
+    expect(state.placementProposal).not.toBeNull();
+    state.acceptPlacementProposal();
+    expect(useAppStore.getState().placementProposal).toBeNull();
+    expect(useAppStore.getState().placedComponents[0].position).not.toEqual(original);
+  });
 });
 
 describe('Store: undo/redo', () => {

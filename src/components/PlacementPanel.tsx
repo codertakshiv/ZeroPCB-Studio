@@ -15,6 +15,9 @@ export function PlacementPanel() {
   const runPlacement = useAppStore(s => s.runPlacement);
   const isOptimizing = useAppStore(s => s.isOptimizing);
   const placementResult = useAppStore(s => s.placementResult);
+  const placementProposal = useAppStore(s => s.placementProposal);
+  const acceptPlacementProposal = useAppStore(s => s.acceptPlacementProposal);
+  const rejectPlacementProposal = useAppStore(s => s.rejectPlacementProposal);
   const placedComponents = useAppStore(s => s.placedComponents);
   const circuit = useAppStore(s => s.circuit);
   const lockedCount = placedComponents.filter(c => c.locked).length;
@@ -67,6 +70,35 @@ export function PlacementPanel() {
           )}
         </div>
       </Panel>
+
+      {placementProposal && (
+        <Panel title="Review placement changes">
+          <div className="flex flex-col gap-2 text-xs">
+            <p className="text-muted">These positions will change only if you apply this proposal. Locked components stay fixed.</p>
+            <div className="max-h-40 overflow-auto flex flex-col gap-1">
+              {placementProposal.placedComponents.filter(component => {
+                const original = placedComponents.find(current => current.id === component.id);
+                return !original || original.position.row !== component.position.row || original.position.col !== component.position.col || original.orientation !== component.orientation;
+              }).map(component => {
+                const original = placedComponents.find(current => current.id === component.id);
+                const position = `row ${component.position.row + 1}, col ${component.position.col + 1}`;
+                return (
+                  <div key={component.id} className="rounded border border-app px-2 py-1">
+                    <strong>{component.reference}</strong>{' '}
+                    {original ? `(${original.position.row + 1}, ${original.position.col + 1}) → ` : 'unplaced → '}
+                    {position}{component.orientation !== original?.orientation ? `, ${component.orientation}°` : ''}
+                  </div>
+                );
+              })}
+            </div>
+            {!placementProposal.success && <p className="text-amber-600">This proposal leaves {placementProposal.unplacedComponents.length} component(s) unplaced.</p>}
+            <div className="flex gap-2">
+              <Button variant="primary" className="flex-1" onClick={acceptPlacementProposal}>Apply proposal</Button>
+              <Button className="flex-1" onClick={rejectPlacementProposal}>Reject</Button>
+            </div>
+          </div>
+        </Panel>
+      )}
       
       <Panel title="Optimization Weights" defaultOpen={false}>
         <WeightsEditor weights={placementConfig.weights} onChange={updateWeight} />

@@ -495,6 +495,41 @@ test.describe('ZeroPCB Studio', () => {
     expect(after.center!.y).toBeCloseTo(pins[3].y, 0);
   });
 
+  test('keeps separate schematic nets distinct at crossings', async ({ page }) => {
+    await page.goto('/');
+    await addFootprint(page, 'DIP-8', 'DIP-8');
+    await addFootprint(page, 'DIP-8', 'DIP-8');
+    await page.getByRole('button', { name: /Schematic/ }).click();
+
+    const pinGroups = await page.evaluate(() => {
+      const svg = document.querySelector('[data-testid="schematic-canvas"]')!;
+      const pins = Array.from(svg.querySelectorAll('.sch-pin-hit')).map(hit => {
+        const rect = hit.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      });
+      const byX = new Map<number, { x: number; y: number }[]>();
+      for (const pin of pins) {
+        const key = Math.round(pin.x);
+        byX.set(key, [...(byX.get(key) ?? []), pin]);
+      }
+      return [...byX.values()]
+        .filter(group => group.length === 4)
+        .map(group => group.sort((a, b) => a.y - b.y));
+    });
+    expect(pinGroups).toHaveLength(4);
+    const outerLeft = pinGroups[0];
+    const outerRight = pinGroups[3];
+
+    await page.mouse.click(outerLeft[0].x, outerLeft[0].y);
+    await page.mouse.click(outerRight[3].x, outerRight[3].y);
+    await page.mouse.click(outerLeft[3].x, outerLeft[3].y);
+    await page.mouse.click(outerRight[0].x, outerRight[0].y);
+
+    await expect(page.locator('[data-testid="schematic-wire-bridge"]').first()).toBeVisible();
+    await expect(page.locator('.sch-junction')).toHaveCount(0);
+    await expect(page.locator('.sch-wire')).toHaveCount(2);
+  });
+
   test('schematic canvas can be enlarged, wheel-zoomed and expanded', async ({ page }) => {
     await page.goto('/');
     await addFootprint(page, 'Axial Resistor', 'Axial Resistor');
