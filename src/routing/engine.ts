@@ -240,6 +240,10 @@ export function findPath(
   
   const startNode = graph.nodes.get(startKey);
   if (!startNode) return null;
+  // A route may only start at a pad owned by its own net. The search checks
+  // ownership when entering pads; without this guard, a conflicting pin could
+  // start a path from another net's pad and escape the conflict check.
+  if (startNode.netId && startNode.netId !== netId) return null;
   
   const openMap = new Map<string, AStarState>();
   const closedSet = new Set<string>();
@@ -399,6 +403,8 @@ function heuristic(coord: Coordinate, targets: Coordinate[]): number {
 }
 
 export function routeNet(context: RoutingContext, net: Net): Route | null {
+  if (getConflictingPinPad(context, net.id)) return null;
+
   // Get physical coordinates of all pins in this net
   const pinCoords: Coordinate[] = [];
   const seen = new Set<string>();
@@ -439,6 +445,7 @@ export function routeNet(context: RoutingContext, net: Net): Route | null {
   const segmentsByPair: { from: Coordinate; to: Coordinate; segments: RouteSegment[] }[] = [];
   const tree = new Set<string>([`${pinCoords[0].row},${pinCoords[0].col}`]);
   const treeCoords: Coordinate[] = [pinCoords[0]];
+  const treeCoordKeys = new Set(tree);
   const remaining = pinCoords.slice(1);
   
   while (remaining.length > 0) {
@@ -481,9 +488,32 @@ export function routeNet(context: RoutingContext, net: Net): Route | null {
     const target = remaining[best.targetIdx];
     segmentsByPair.push({ from: best.treeCoord, to: target, segments: best.segments });
     
-    // Update tree and congestion
-    treeCoords.push(target);
-    tree.add(`${target.row},${target.col}`);
+    // Treat every pad reached by this net as part of its connected tree.
+    // Starting later branches at an existing route pad avoids drawing a second
+    // wire over a segment that already connects this net.
+    for (const segment of best.segments) {
+      const rowStep = Math.sign(segment.to.row - segment.from.row);
+      const colStep = Math.sign(segment.to.col - segment.from.col);
+      const steps = Math.max(Math.abs(segment.to.row - segment.from.row), Math.abs(segment.to.col - segment.from.col));
+      for (let step = 0; step <= steps; step++) {
+        const coordinate = {
+          row: segment.from.row + rowStep * step,
+          col: segment.from.col + colStep * step,
+        };
+        const key = `${coordinate.row},${coordinate.col}`;
+        tree.add(key);
+        if (!treeCoordKeys.has(key)) {
+          treeCoordKeys.add(key);
+          treeCoords.push(coordinate);
+        }
+      }
+    }
+    const targetKey = `${target.row},${target.col}`;
+    tree.add(targetKey);
+    if (!treeCoordKeys.has(targetKey)) {
+      treeCoordKeys.add(targetKey);
+      treeCoords.push(target);
+    }
     
     for (const segment of best.segments) {
       if (segment.type === 'wire') {
@@ -497,8 +527,16 @@ export function routeNet(context: RoutingContext, net: Net): Route | null {
   
   // Merge all segments into a single route
   const allSegments: RouteSegment[] = [];
+  const uniqueSegments = new Set<string>();
   for (const pair of segmentsByPair) {
-    allSegments.push(...pair.segments);
+    for (const segment of pair.segments) {
+      const fromKey = `${segment.from.row},${segment.from.col}`;
+      const toKey = `${segment.to.row},${segment.to.col}`;
+      const edgeKey = `${segment.layer}|${fromKey < toKey ? `${fromKey}|${toKey}` : `${toKey}|${fromKey}`}`;
+      if (uniqueSegments.has(edgeKey)) continue;
+      uniqueSegments.add(edgeKey);
+      allSegments.push(segment);
+    }
   }
   
   if (allSegments.length === 0) {
@@ -594,10 +632,12 @@ export function routeAllNets(context: RoutingContext): RoutingResult {
   const routes: Route[] = [];
   const unroutedNets: string[] = [];
   const errors: RoutingError[] = [];
+  const pinPadConflicts = getPinPadNetConflicts(context);
   
   // Keep existing locked routes
   for (const route of context.existingRoutes) {
-    if (context.lockedRoutes.has(route.id)) {
+    const pinConflict = pinPadConflicts.find(conflict => conflict.netIds.has(route.netId));
+    if (context.lockedRoutes.has(route.id) && !pinConflict) {
       routes.push(route);
     }
   }
@@ -612,6 +652,18 @@ export function routeAllNets(context: RoutingContext): RoutingResult {
   });
   
   for (const net of sortedNets) {
+    const pinConflict = pinPadConflicts.find(conflict => conflict.netIds.has(net.id));
+    if (pinConflict) {
+      unroutedNets.push(net.id);
+      errors.push({
+        code: 'PAD_NET_CONFLICT',
+        message: `Net "${net.name}" shares pad ${pinConflict.key} with a different net. Move a component lead or assign the pins to one net before routing.`,
+        netId: net.id,
+        coordinate: pinConflict.coordinate,
+      });
+      continue;
+    }
+
     // Skip if already routed and locked
     if (context.lockedRoutes.size > 0 && 
         context.existingRoutes.some(r => r.netId === net.id && context.lockedRoutes.has(r.id))) {
@@ -693,6 +745,35 @@ function hasStripboardNetConflict(context: RoutingContext, net: Net): boolean {
     }
   }
   return false;
+}
+
+function getPinPadNetConflicts(context: RoutingContext): Array<{
+  key: string;
+  coordinate: Coordinate;
+  netIds: Set<string>;
+}> {
+  const pinNetsByPad = new Map<string, Set<string>>();
+  for (const component of context.components) {
+    for (const [pinId, coordinate] of component.pinPositions) {
+      const netId = component.nets.get(pinId);
+      if (!netId) continue;
+      const key = `${coordinate.row},${coordinate.col}`;
+      const netIds = pinNetsByPad.get(key) ?? new Set<string>();
+      netIds.add(netId);
+      pinNetsByPad.set(key, netIds);
+    }
+  }
+
+  return [...pinNetsByPad.entries()]
+    .filter(([, netIds]) => netIds.size > 1)
+    .map(([key, netIds]) => {
+      const [row, col] = key.split(',').map(Number);
+      return { key, coordinate: { row, col }, netIds };
+    });
+}
+
+function getConflictingPinPad(context: RoutingContext, netId: string) {
+  return getPinPadNetConflicts(context).find(conflict => conflict.netIds.has(netId));
 }
 
 /** Reserve pads touched by a wire so a later net cannot short through them. */

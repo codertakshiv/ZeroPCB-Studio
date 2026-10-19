@@ -324,6 +324,63 @@ describe('Net routing', () => {
     ])));
     expect([...routePads[0]].some(pad => routePads[1].has(pad))).toBe(false);
   });
+
+  it('rejects different nets assigned to the same physical component pad', () => {
+    const board = createEmptyBoard(config);
+    const endpoint = (id: string, row: number, col: number, netId: string) => {
+      const component = placeComponent(id, id.toUpperCase(), { row, col }, 0, RESISTOR_AXIAL, { p1: netId });
+      component.pinPositions = new Map([['p1', { row, col }]]);
+      return component;
+    };
+    const components = [
+      endpoint('shared-a', 7, 7, 'n1'),
+      endpoint('shared-b', 7, 7, 'n2'),
+      endpoint('a-end', 7, 2, 'n1'),
+      endpoint('b-end', 7, 12, 'n2'),
+    ];
+    const nets: Net[] = [
+      { id: 'n1', name: 'N1', pins: [
+        { componentId: 'shared-a', pinId: 'p1', pinName: '1', pinNumber: '1' },
+        { componentId: 'a-end', pinId: 'p1', pinName: '1', pinNumber: '1' },
+      ] },
+      { id: 'n2', name: 'N2', pins: [
+        { componentId: 'shared-b', pinId: 'p1', pinName: '1', pinNumber: '1' },
+        { componentId: 'b-end', pinId: 'p1', pinName: '1', pinNumber: '1' },
+      ] },
+    ];
+
+    const result = routeAllNets(createRoutingContext(board, components, nets, [], new Set()));
+    expect(result.routes).toHaveLength(0);
+    expect(result.unroutedNets).toEqual(expect.arrayContaining(['n1', 'n2']));
+    expect(result.errors.filter(error => error.code === 'PAD_NET_CONFLICT')).toHaveLength(2);
+    expect(result.errors.every(error => error.coordinate?.row === 7 && error.coordinate?.col === 7)).toBe(true);
+  });
+
+  it('branches a multi-pin net from existing wire pads without duplicating wire segments', () => {
+    const board = createEmptyBoard(config);
+    const endpoint = (id: string, row: number, col: number) => {
+      const component = placeComponent(id, id.toUpperCase(), { row, col }, 0, RESISTOR_AXIAL, { p1: 'n1' });
+      component.pinPositions = new Map([['p1', { row, col }]]);
+      return component;
+    };
+    const components = [endpoint('left', 7, 1), endpoint('right', 7, 13), endpoint('branch', 6, 7)];
+    const net: Net = { id: 'n1', name: 'N1', pins: components.map(component => ({
+      componentId: component.id,
+      pinId: 'p1',
+      pinName: '1',
+      pinNumber: '1',
+    })) };
+
+    const route = routeNet(createRoutingContext(board, components, [net], [], new Set()), net);
+    expect(route).not.toBeNull();
+    const edgeKeys = route!.segments.map(segment => {
+      const from = `${segment.from.row},${segment.from.col}`;
+      const to = `${segment.to.row},${segment.to.col}`;
+      return from < to ? `${from}|${to}` : `${to}|${from}`;
+    });
+    expect(new Set(edgeKeys).size).toBe(edgeKeys.length);
+    expect(route!.segments.length).toBeLessThanOrEqual(14);
+  });
 });
 
 describe('Congestion handling', () => {
